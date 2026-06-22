@@ -18,6 +18,7 @@ foundationLayout = "1.11.2"
 ui = "1.11.2"
 composeMaterial = "1.6.2"
 uiGraphicsVersion = "1.11.3"
+roomKtx = "2.8.4"
 
 [libraries]
 # ✂️ DELETED: The duplicate 2024 BOM reference line completely
@@ -51,6 +52,7 @@ androidx-compose-foundation-layout = { group = "androidx.compose.foundation", na
 ui = { group = "androidx.compose.ui", name = "ui", version.ref = "ui" }
 androidx-compose-material = { group = "androidx.wear.compose", name = "compose-material", version.ref = "composeMaterial" }
 androidx-compose-ui-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphicsVersion" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "roomKtx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

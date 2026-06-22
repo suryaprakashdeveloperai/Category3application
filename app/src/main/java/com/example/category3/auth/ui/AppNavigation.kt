@@ -55,9 +55,9 @@ fun AppNavigation() {
         // ============================================================================
         composable(route = AppDestinations.WORKFLOW_DASHBOARD) {
             WorkflowDashboardScreen(
-                onNavigateToScreen = { targetRoute ->
-                    navController.navigate(targetRoute)
-                }
+//                onNavigateToScreen = { targetRoute ->
+//                    navController.navigate(targetRoute)
+//                }
             )
         }
 

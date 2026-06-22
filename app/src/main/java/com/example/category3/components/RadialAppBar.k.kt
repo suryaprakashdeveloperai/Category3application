@@ -1,8 +1,5 @@
 package com.example.category3.components
 
-import android.content.Context
-import android.os.Environment
-import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -19,14 +16,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,17 +40,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.category3.auth.ui.PowderMakerState
-import java.io.File
-import java.io.FileWriter
 
-private val SkPlateWhite = Color(0xFFF5F7FA)
-private val SkPureBlack = Color(0xFF000000)
-private val SkDeepNavy = Color(0xFF1A2233)
-private val SkHardwareBorder = Color(0xFFD1D6E0)
+// Strict Brand Palette
+private val BrandDeepNavy = Color(0xFF0A0D2F)
+private val BrandLightGray = Color(0xFFBCBCBF)
+private val BrandOffWhite = Color(0xFFF6F6F7)
+private val BrandCyanBlue = Color(0xFF47B3E2)
+private val BrandMutedBlue = Color(0xFF496D89)
+private val BrandTeal = Color(0xFF11CFC9)
+private val BrandSoftOrange = Color(0xFFD68A51)
 
 data class RadialMenuItem(
     val icon: ImageVector,
@@ -69,22 +63,18 @@ data class RadialMenuItem(
 @Composable
 fun RadialAppBar(
     modifier: Modifier = Modifier,
-    activeSection: String = "home",                // ✅ Tracks the currently active structural frame context
-    currentPmmState: PowderMakerState = PowderMakerState(),
+    activeSection: String = "home",
     onActionSelected: (String) -> Unit
 ) {
-    val context = LocalContext.current
     var isExpanded by remember { mutableStateOf(false) }
 
+    // Updated menu items using STRICT PALETTE
     val menuItems = remember {
         val staticDefs = listOf(
-            Triple(Icons.Rounded.Dashboard, "HOME", Color(0xFF10B981)),
-            Triple(Icons.Rounded.Settings, "MILL", Color(0xFF3B82F6)),
-            Triple(Icons.Rounded.AccountTree, "DCS", Color(0xFF06B6D4)),
-            Triple(Icons.Rounded.Whatshot, "PAN", Color(0xFFF59E0B)),
-            Triple(Icons.Rounded.Build, "REPAIRS", Color(0xFFEF4444)),
-            Triple(Icons.Rounded.Download, "DOWNLOAD", Color(0xFF0EA5E9)),
-            Triple(Icons.Rounded.Logout, "LOGOUT", Color(0xFF7A828E))
+            Triple(Icons.Rounded.Dashboard, "HOME", BrandTeal),
+            Triple(Icons.Rounded.Login, "DATA ENTRY", BrandCyanBlue),
+            Triple(Icons.Rounded.Settings, "SETTINGS", BrandSoftOrange),
+            Triple(Icons.Rounded.Info, "ABOUT US", BrandMutedBlue)
         )
 
         staticDefs.mapIndexed { index, def ->
@@ -93,7 +83,7 @@ fun RadialAppBar(
                 icon = def.first,
                 title = def.second,
                 angleDegrees = calculatedAngle,
-                actionId = def.second.lowercase(),
+                actionId = def.second.lowercase().replace(" ", "_"),
                 iconTint = def.third
             )
         }
@@ -126,10 +116,13 @@ fun RadialAppBar(
                 val strokeWidth = 64.dp.toPx()
                 val currentRadius = maxRadius.toPx()
                 val centerPoint = Offset(x = buttonCenter.toPx(), y = size.height / 2)
-                val topLeft = Offset(x = centerPoint.x - currentRadius, y = centerPoint.y - currentRadius)
+                val topLeft = Offset(
+                    x = centerPoint.x - currentRadius,
+                    y = centerPoint.y - currentRadius
+                )
 
                 drawArc(
-                    color = SkDeepNavy.copy(alpha = 0.15f),
+                    color = BrandDeepNavy.copy(alpha = 0.15f),
                     startAngle = -90f,
                     sweepAngle = trackSweep,
                     useCenter = false,
@@ -140,7 +133,11 @@ fun RadialAppBar(
 
                 drawArc(
                     brush = Brush.verticalGradient(
-                        colors = listOf(Color(0xFFDBDFE6), Color(0xFFEAECEF), Color(0xFFF1F3F6)),
+                        colors = listOf(
+                            BrandLightGray.copy(alpha = 0.5f),
+                            BrandOffWhite,
+                            Color.White
+                        ),
                         startY = centerPoint.y - currentRadius,
                         endY = centerPoint.y + currentRadius
                     ),
@@ -163,12 +160,7 @@ fun RadialAppBar(
                 buttonCenter = buttonCenter,
                 onClick = {
                     isExpanded = false
-                    if (item.actionId == "download") {
-                        // ✅ Route parsing branch dynamically handles different exports based on section context
-                        executeDynamicSectionExport(context, activeSection, currentPmmState)
-                    } else {
-                        onActionSelected(item.actionId)
-                    }
+                    onActionSelected(item.actionId)
                 }
             )
         }
@@ -177,9 +169,32 @@ fun RadialAppBar(
             modifier = Modifier
                 .offset(x = 16.dp)
                 .size(58.dp)
-                .shadow(elevation = if (isExpanded) 2.dp else 8.dp, shape = CircleShape, ambientColor = SkDeepNavy.copy(alpha = 0.2f), spotColor = SkDeepNavy.copy(alpha = 0.3f))
-                .background(Brush.verticalGradient(colors = if (isExpanded) listOf(Color(0xFFD6D9E0), Color(0xFFEDEFF3)) else listOf(Color.White, SkPlateWhite, Color(0xFFE2E6EE))))
-                .border(width = 1.5.dp, brush = Brush.verticalGradient(colors = listOf(Color.White, SkHardwareBorder, SkHardwareBorder.copy(alpha = 0.4f))), shape = CircleShape)
+                .shadow(
+                    elevation = if (isExpanded) 2.dp else 8.dp,
+                    shape = CircleShape,
+                    ambientColor = BrandDeepNavy.copy(alpha = 0.2f),
+                    spotColor = BrandDeepNavy.copy(alpha = 0.3f)
+                )
+                .background(
+                    Brush.verticalGradient(
+                        colors = if (isExpanded) {
+                            listOf(BrandLightGray, BrandOffWhite)
+                        } else {
+                            listOf(Color.White, BrandOffWhite, BrandLightGray)
+                        }
+                    )
+                )
+                .border(
+                    width = 1.5.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White,
+                            BrandLightGray,
+                            BrandLightGray.copy(alpha = 0.4f)
+                        )
+                    ),
+                    shape = CircleShape
+                )
                 .clickable { isExpanded = !isExpanded }
                 .rotate(buttonRotation),
             contentAlignment = Alignment.Center
@@ -187,7 +202,7 @@ fun RadialAppBar(
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = null,
-                tint = if (isExpanded) SkPureBlack.copy(alpha = 0.6f) else SkPureBlack,
+                tint = if (isExpanded) BrandDeepNavy.copy(alpha = 0.6f) else BrandDeepNavy,
                 modifier = Modifier.size(28.dp)
             )
         }
@@ -196,11 +211,20 @@ fun RadialAppBar(
 
 @Composable
 fun BoxScope.RadialMenuItemComposable(
-    item: RadialMenuItem, index: Int, isExpanded: Boolean, maxRadius: Dp, buttonCenter: Dp, onClick: () -> Unit
+    item: RadialMenuItem,
+    index: Int,
+    isExpanded: Boolean,
+    maxRadius: Dp,
+    buttonCenter: Dp,
+    onClick: () -> Unit
 ) {
     val itemReveal by animateFloatAsState(
         targetValue = if (isExpanded) 1f else 0f,
-        animationSpec = tween(durationMillis = 450, delayMillis = if (isExpanded) index * 50 else 0, easing = FastOutSlowInEasing),
+        animationSpec = tween(
+            durationMillis = 450,
+            delayMillis = if (isExpanded) index * 50 else 0,
+            easing = FastOutSlowInEasing
+        ),
         label = "item_reveal"
     )
 
@@ -216,87 +240,30 @@ fun BoxScope.RadialMenuItemComposable(
             .offset(x = offsetX - 23.dp, y = offsetY)
             .alpha(itemReveal)
             .scale(0.6f + (0.4f * itemReveal))
-            .shadow(elevation = 5.dp, shape = CircleShape, ambientColor = SkDeepNavy.copy(alpha = 0.15f), spotColor = SkDeepNavy.copy(alpha = 0.25f))
-            .background(Brush.verticalGradient(colors = listOf(Color.White, SkPlateWhite, Color(0xFFE2E6EE))))
-            .border(width = 1.dp, brush = Brush.verticalGradient(colors = listOf(Color.White, SkHardwareBorder)), shape = CircleShape)
+            .shadow(
+                elevation = 5.dp,
+                shape = CircleShape,
+                ambientColor = BrandDeepNavy.copy(alpha = 0.15f),
+                spotColor = BrandDeepNavy.copy(alpha = 0.25f)
+            )
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color.White, BrandOffWhite, BrandLightGray)
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(colors = listOf(Color.White, BrandLightGray)),
+                shape = CircleShape
+            )
             .clickable(enabled = isExpanded) { onClick() },
         contentAlignment = Alignment.Center
     ) {
-        Icon(imageVector = item.icon, contentDescription = null, tint = item.iconTint, modifier = Modifier.size(22.dp))
-    }
-}
-
-// ============================================================================
-// CONTEXT-AWARE ROUTER EXPORT MANAGEMENT ENGINE
-// ============================================================================
-private fun executeDynamicSectionExport(context: Context, section: String, state: PowderMakerState) {
-    when (section.lowercase()) {
-        "mill" -> generateMillManualEntryCsv(context, state)
-        "home" -> generateCrystallizationSystemCsv(context, state)
-        else -> {
-            // Fallback for general logs if other sections are mapped
-            Toast.makeText(context, "No custom log data for sector: ${section.uppercase()}", Toast.LENGTH_SHORT).show()
-        }
-    }
-}
-
-// 🏭 1. EXCLUSIVE LOGISTICS ENGINE FOR THE MILL SECTION MANUAL ENTRY CSV
-private fun generateMillManualEntryCsv(context: Context, state: PowderMakerState) {
-    try {
-        val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "MILL_ManualEntry_Batch_${state.batchNo}.csv")
-        val writer = FileWriter(targetFile)
-
-        writer.append("MILL SECTION INDUSTRIAL MATRIX,MANUAL FIELD RECORD,LOG DATA SCALE\n")
-        writer.append("Associated Machine ID,${state.mcNo},Factory Asset String\n")
-        writer.append("Refinery Batch Number Reference,${state.batchNo},Manufacturing Run ID\n")
-        writer.append("Raw Mill Input Material Feedstock,${state.openPanMaterial},Composition Class\n")
-        writer.append("Powder Maker Machine (PMM) Operational Frequency,${state.pmmFrequencyHz},Hertz (Hz)\n")
-        writer.append("Material Dropping Stage - R1 Phase Window,${state.droppingR1Min},Minutes\n")
-        writer.append("Material Dropping Stage - F Intermediate Phase,${state.droppingFMin},Minutes\n")
-        writer.append("Material Dropping Stage - R2 Settling Phase,${state.droppingR2Min},Minutes\n")
-        writer.append("Calculated Cumulative Mill Run Cycle Time,${state.totalCycleTimeMin},Minutes\n")
-        writer.append("Soda Addition Powder Charge Payload,${state.sodaAdditionQty},Grams\n")
-        writer.append("Alkaline Solution Dispersion Dissolve Time,${state.sodaTotalTimeMin},Minutes\n")
-
-        val cleanRemarks = state.remarks.replace(",", ";").replace("\n", " ")
-        writer.append("Mill Room Anomalies & Engineering Notes,$cleanRemarks,String Logs\n")
-        writer.append("Data Authenticator Token,M-MILL SECURITY LOCK CO-SIGNED,Trace Verification\n")
-
-        writer.flush()
-        writer.close()
-        Toast.makeText(context, "Mill Manual CSV Generated Successfully!", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(context, "Mill Export Aborted: ${e.message}", Toast.LENGTH_SHORT).show()
-    }
-}
-
-// ❄️ 2. ORIGINAL PROFILE FOR THE CORE CRYSTALLIZATION / MAIN MONITOR FLIGHT
-private fun generateCrystallizationSystemCsv(context: Context, state: PowderMakerState) {
-    try {
-        val targetFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS), "PMM_CrystalProfile_Batch_${state.batchNo}.csv")
-        val writer = FileWriter(targetFile)
-
-        writer.append("CRYSTALLIZATION SECTOR LOGS,LOGGED STATE VALUE,UNIT BOUNDS\n")
-        writer.append("Machine Number,${state.mcNo},ID String\n")
-        writer.append("Batch Identifier,${state.batchNo},ID String\n")
-        writer.append("Open Pan Drop Start,${state.opDropStart},HH:MM\n")
-        writer.append("Open Pan Drop End,${state.opDropEnd},HH:MM\n")
-        writer.append("Open Pan Drop Total,${state.opDropTotalMin},Minutes\n")
-        writer.append("Crystallization Start,${state.crystalStart},HH:MM\n")
-        writer.append("Crystallization End,${state.crystalEnd},HH:MM\n")
-        writer.append("Crystallization Total Duration,${state.crystalTotalMin},Minutes\n")
-        writer.append("Crystallization Frequency,${state.crystalFrequencyHz},Hz\n")
-        writer.append("Process Cycle Start,${state.cycleStart},HH:MM\n")
-        writer.append("Process Cycle End,${state.cycleEnd},HH:MM\n")
-        writer.append("Process Cycle Total,${state.cycleTotalMin},Minutes\n")
-        writer.append("Chamber Vacuum Pressure,${state.cycleVacuum},mm Hg\n")
-
-        writer.flush()
-        writer.close()
-        Toast.makeText(context, "Crystallization CSV Saved to Documents!", Toast.LENGTH_LONG).show()
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(context, "Export Failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        Icon(
+            imageVector = item.icon,
+            contentDescription = item.title,
+            tint = item.iconTint,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }

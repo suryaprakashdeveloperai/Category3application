@@ -9,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.category3"
-        minSdk = 27
+        minSdk = 30
         targetSdk = 37
 
         versionCode = 1
@@ -49,6 +49,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.ui.graphics)
     implementation(libs.androidx.core.animation)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.ui)
     implementation(libs.ui)
     implementation(libs.ui.graphics)

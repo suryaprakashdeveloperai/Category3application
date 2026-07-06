@@ -70,7 +70,7 @@ import com.example.category3.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// 🎨 CORE BRAND COLOR SCHEME (Premium High-Contrast Light Theme)
+// 🎨 CORE BRAND COLOR SCHEME
 val MinimalistTextPrimary = Color(0xFF111827)
 val MinimalistTextMuted = Color(0xFF4B5563)
 val PremiumAccentCore = Color(0xFF0EA5E9)
@@ -165,10 +165,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
             .background(PremiumBaseBackground),
         contentAlignment = Alignment.Center
     ) {
-
-        // ============================================================================
-        // 🌐 INDUSTRIAL BLUEPRINT MESH WITH LOGO-MATCHED NODES
-        // ============================================================================
         Canvas(modifier = Modifier.fillMaxSize()) {
             val gridSpacingPx = 40.dp.toPx()
             val gridColor = Color(0x06111827)
@@ -208,9 +204,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
             }
         }
 
-        // ============================================================================
-        // CONTAINER SHEET HOUSING VIEWPORT FRAMES
-        // ============================================================================
         Row(
             modifier = Modifier
                 .width(900.dp * containerWidthExpansion.value)
@@ -220,10 +213,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-
-            // ============================================================================
-            // CONTAINER 1: LEFT BRANDING PANE (🚀 Glow Embedded Directly Behind Logo)
-            // ============================================================================
             Box(
                 modifier = Modifier
                     .weight(1.2f)
@@ -279,9 +268,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                 }
             }
 
-            // ============================================================================
-            // CONTAINER 2: RIGHT INTERACTION PANE
-            // ============================================================================
             Column(
                 modifier = Modifier
                     .weight(1.1f)
@@ -398,9 +384,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // ============================================================================
-                    // 🕹️ SKEUOMORPHIC HIGH-TACTILE CONTROL HARDWARE BUTTON
-                    // ============================================================================
                     Button(
                         onClick = {
                             if (username.isNotBlank() && password.isNotBlank()) {
@@ -408,14 +391,16 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                                 showError = false
 
                                 val targetRoute = when {
-                                    username == "1" && password == "1" -> AppDestinations.MILL_DASHBOARD
+                                    username == "1" && password == "1" -> AppDestinations.MILLMANUALENTRY
                                     username == "2" && password == "2" -> AppDestinations.FLOTATION_CLARIFIER
-                                    username == "3" && password == "3" -> AppDestinations.FLOTATION_CLARIFIER
+                                    username == "3" && password == "3" -> AppDestinations.DEFECATION_DASHBOARD
                                     username == "4" && password == "4" -> AppDestinations.VACCUM_PAN
                                     username == "5" && password == "5" -> AppDestinations.OPEN_PAN
                                     username == "6" && password == "6" -> AppDestinations.POWDER_MAKER
                                     username == "7" && password == "7" -> AppDestinations.QUALITY_CONTROL
                                     username == "8" && password == "8" -> AppDestinations.DCS_SCREEN
+                                    username == "9" && password == "9" -> AppDestinations.MILL_DASHBOARD
+                                    username == "11" && password == "11" -> AppDestinations.ADMIN_PANEL   // ← NEW
                                     else -> null
                                 }
 
@@ -431,7 +416,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp)
-                            // Double Outer Shadows (Industrial 3D Push-Button Spec)
                             .shadow(
                                 elevation = 6.dp,
                                 shape = RoundedCornerShape(50),
@@ -446,18 +430,16 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                // High-contrast physical bevel gradient map
                                 .background(
                                     brush = Brush.verticalGradient(
                                         colors = listOf(
-                                            PremiumAccentCore.copy(alpha = 0.95f), // Shiny Top Rim Highlight
+                                            PremiumAccentCore.copy(alpha = 0.95f),
                                             PremiumAccentCore,
-                                            Color(0xFF0284C7)                      // Deep Extruded Bevel Base
+                                            Color(0xFF0284C7)
                                         )
                                     ),
                                     shape = RoundedCornerShape(50)
                                 )
-                                // Concentric Skeuomorphic Bezel Ring Borders
                                 .border(1.5.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(50))
                                 .border(0.5.dp, Color(0xFF0369A1).copy(alpha = 0.6f), RoundedCornerShape(50))
                                 .padding(horizontal = 4.dp),
@@ -474,7 +456,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                                     letterSpacing = 1.5.sp,
                                     color = Color.White,
                                     modifier = Modifier.graphicsLayer {
-                                        // Subtle internal offset mimicking 3D stamp engraving
                                         translationY = (-0.5).dp.toPx()
                                     }
                                 )
@@ -493,7 +474,6 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                     .background(Brush.verticalGradient(colors = listOf(Color.Transparent, PremiumAccentCore, PremiumAccentCore, Color.Transparent))),
                 contentAlignment = Alignment.Center
             ) {
-                // Hardware transition line anchor
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.example.category3.auth.ui
 
+import android.content.res.Configuration
 import android.view.MotionEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -10,16 +11,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Draw
@@ -60,10 +62,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.category3.utils.MorphicSpeechTranslator
@@ -72,6 +76,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
+
+// Fallback FontFamily (Remove if FontTelemetryMono is globally defined in your theme)
 
 private data class FlotationClarifierState(
     val batchNo: String = "B-2026-06",
@@ -124,6 +130,9 @@ fun FlotationClarifierScreen(
     onNavigationCallback: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
     val currentDate = remember { LocalDate.now().format(DateTimeFormatter.ISO_DATE) }
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
     var state by remember { mutableStateOf(FlotationClarifierState()) }
@@ -168,247 +177,300 @@ fun FlotationClarifierScreen(
         Modifier.background(palette.baseChassis)
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(structuralBackgroundModifier)
-            .padding(12.dp),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        Column(
-            modifier = Modifier.width(1280.dp).fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
+    // ============================================================================
+    // 🧩 MODULAR COMPONENT BLOCKS
+    // ============================================================================
+    val HeaderContent = @Composable {
+        val containerModifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
+            .background(palette.glassFill, RoundedCornerShape(10.dp))
+            .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
 
-            // ============================================================================
-            // MASTER HEADER
-            // ============================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
-                    .background(palette.glassFill, RoundedCornerShape(10.dp))
-                    .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("FLOTATION CLARIFIER CONTROL MATRIX [AUTOMATED PLC LINK]", color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
-                    Row(
-                        modifier = Modifier.padding(top = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isDarkThemeOverride) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
-                            contentDescription = null, tint = if (isDarkThemeOverride) TechAccentBlue else TechWarnOrange,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
-                        Switch(
-                            checked = isDarkThemeOverride, onCheckedChange = { isDarkThemeOverride = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White, checkedTrackColor = TechAccentBlue,
-                                uncheckedThumbColor = Color.White, uncheckedTrackColor = TechWarnOrange.copy(alpha = 0.4f),
-                                uncheckedBorderColor = Color.Transparent, checkedBorderColor = Color.Transparent
-                            ),
-                            modifier = Modifier.graphicsLayer(scaleX = 0.65f, scaleY = 0.65f)
-                        )
-                    }
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                    Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+        val headerDetails = @Composable {
+            Column {
+                Text(
+                    "FLOTATION CLARIFIER CONTROL MATRIX",
+                    color = palette.textPrimary, fontSize = if(isPortrait) 13.sp else 15.sp,
+                    fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Row(modifier = Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(imageVector = if (isDarkThemeOverride) Icons.Rounded.DarkMode else Icons.Rounded.LightMode, contentDescription = null, tint = if (isDarkThemeOverride) TechAccentBlue else TechWarnOrange, modifier = Modifier.size(14.dp))
+                    Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Switch(
+                        checked = isDarkThemeOverride, onCheckedChange = { isDarkThemeOverride = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White, checkedTrackColor = TechAccentBlue,
+                            uncheckedThumbColor = Color.White, uncheckedTrackColor = TechWarnOrange.copy(alpha = 0.4f),
+                            uncheckedBorderColor = Color.Transparent, checkedBorderColor = Color.Transparent
+                        ),
+                        modifier = Modifier.graphicsLayer(scaleX = 0.65f, scaleY = 0.65f)
+                    )
                 }
             }
+        }
+        val timeDetails = @Composable {
+            Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
+                Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
+                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+            }
+        }
 
-            // ============================================================================
-            // DUAL COLUMN SPACE-OPTIMIZED WORKSPACE
-            // ============================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+        if (isPortrait) {
+            Column(modifier = containerModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                headerDetails()
+                timeDetails()
+            }
+        } else {
+            Row(modifier = containerModifier, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                headerDetails()
+                timeDetails()
+            }
+        }
+    }
 
-                // 🛑 COLUMN 01 (LEFT SIDE)
-                Column(
-                    modifier = Modifier.weight(1.1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // 1. Timelines Card
-                    ClarifierFormSectionCard(title = "BATCH SCHEDULING TIMELINES", icon = Icons.Rounded.Schedule, palette = palette, isDark = isDarkThemeOverride) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ClarifierLogInputField("BATCH NUMBER", state.batchNo, palette, Modifier.weight(1f)) { state = state.copy(batchNo = it, isSubmitted = false) }
-                                ClarifierLogInputField("CLARIFIER ID UNIT", state.clarifierNo, palette, Modifier.weight(1f)) { state = state.copy(clarifierNo = it, isSubmitted = false) }
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ClarifierLogInputField("START TIME", state.startTime, palette, Modifier.weight(1f)) { state = state.copy(startTime = it, isSubmitted = false) }
-                                ClarifierLogInputField("END TIME", state.endTime, palette, Modifier.weight(1f)) { state = state.copy(endTime = it, isSubmitted = false) }
-                            }
-                            ClarifierLogInputField("BATCH OPERATION DURATION", state.duration, palette, Modifier.fillMaxWidth()) { state = state.copy(duration = it, isSubmitted = false) }
-                        }
-                    }
-
-                    // 2. Chemistry Parameters Card
-                    ClarifierFormSectionCard(title = "JUICE CHEMISTRY PARAMETERS", icon = Icons.Rounded.Opacity, palette = palette, isDark = isDarkThemeOverride) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ClarifierLogInputField("SODA ADDED (GRAMS)", state.sodaAddedGram, palette, Modifier.weight(1f)) { state = state.copy(sodaAddedGram = it, isSubmitted = false) }
-                                ClarifierLogInputField("SOLID MATERIAL ADDED", state.solidAdded, palette, Modifier.weight(1f)) { state = state.copy(solidAdded = it, isSubmitted = false) }
-                            }
-                            HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ClarifierLogInputField("JUICE INLET pH", state.juiceInletPh, palette, Modifier.weight(1f)) { state = state.copy(juiceInletPh = it, isSubmitted = false) }
-                                ClarifierLogInputField("JUICE OUTLET pH", state.juiceOutletPh, palette, Modifier.weight(1f)) { state = state.copy(juiceOutletPh = it, isSubmitted = false) }
-                            }
-                            HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                ClarifierLogInputField("TURBIDITY BASELINE (NTU)", state.clearJuiceTurbidity, palette, Modifier.weight(1f)) { state = state.copy(clearJuiceTurbidity = it, isSubmitted = false) }
-                                ClarifierLogInputField("PURITY COEFFICIENT (%)", state.clearJuicePurity, palette, Modifier.weight(1f)) { state = state.copy(clearJuicePurity = it, isSubmitted = false) }
-                            }
-                        }
-                    }
+    val TimelinesContent = @Composable { modifier: Modifier ->
+        ClarifierFormSectionCard(title = "BATCH SCHEDULING TIMELINES", icon = Icons.Rounded.Schedule, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClarifierLogInputField("BATCH NUMBER", state.batchNo, palette, Modifier.weight(1f)) { state = state.copy(batchNo = it, isSubmitted = false) }
+                    ClarifierLogInputField("CLARIFIER ID UNIT", state.clarifierNo, palette, Modifier.weight(1f)) { state = state.copy(clarifierNo = it, isSubmitted = false) }
                 }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClarifierLogInputField("START TIME", state.startTime, palette, Modifier.weight(1f)) { state = state.copy(startTime = it, isSubmitted = false) }
+                    ClarifierLogInputField("END TIME", state.endTime, palette, Modifier.weight(1f)) { state = state.copy(endTime = it, isSubmitted = false) }
+                }
+                ClarifierLogInputField("BATCH OPERATION DURATION", state.duration, palette, Modifier.fillMaxWidth()) { state = state.copy(duration = it, isSubmitted = false) }
+            }
+        }
+    }
 
-                // 🛑 COLUMN 02 (RIGHT SIDE)
-                Column(
-                    modifier = Modifier.weight(1.1f),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Expandable Remarks
-                    ClarifierFormSectionCard(title = "OPERATOR RECORDING LOG ANNOTATIONS", icon = Icons.Rounded.Notes, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.weight(1f)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(palette.inputContainer)
-                                .border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
-                                .padding(12.dp)
-                        ) {
-                            BasicTextField(
-                                value = state.remarks,
-                                onValueChange = { state = state.copy(remarks = it, isSubmitted = false) },
-                                textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 14.sp),
-                                cursorBrush = SolidColor(palette.textPrimary),
-                                modifier = Modifier.fillMaxSize().padding(end = 32.dp),
-                                decorationBox = { innerTextField ->
-                                    if (state.remarks.isEmpty()) {
-                                        Text(
-                                            text = "INPUT LIVE CLARIFICATION ANOMALIES, PH BALANCES SLIP PAGES OR GENERAL NOTE ASSISTANCES...",
-                                            color = if (isListening) TechAlarmRed else palette.textMuted,
-                                            fontSize = 13.sp,
-                                            fontFamily = FontTelemetryMono,
-                                            lineHeight = 20.sp
-                                        )
-                                    }
-                                    innerTextField()
-                                }
+    val ChemistryContent = @Composable { modifier: Modifier ->
+        ClarifierFormSectionCard(title = "JUICE CHEMISTRY PARAMETERS", icon = Icons.Rounded.Opacity, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClarifierLogInputField("SODA ADDED (GRAMS)", state.sodaAddedGram, palette, Modifier.weight(1f)) { state = state.copy(sodaAddedGram = it, isSubmitted = false) }
+                    ClarifierLogInputField("SOLID MATERIAL ADDED", state.solidAdded, palette, Modifier.weight(1f)) { state = state.copy(solidAdded = it, isSubmitted = false) }
+                }
+                HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClarifierLogInputField("JUICE INLET pH", state.juiceInletPh, palette, Modifier.weight(1f)) { state = state.copy(juiceInletPh = it, isSubmitted = false) }
+                    ClarifierLogInputField("JUICE OUTLET pH", state.juiceOutletPh, palette, Modifier.weight(1f)) { state = state.copy(juiceOutletPh = it, isSubmitted = false) }
+                }
+                HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClarifierLogInputField("TURBIDITY BASELINE (NTU)", state.clearJuiceTurbidity, palette, Modifier.weight(1f)) { state = state.copy(clearJuiceTurbidity = it, isSubmitted = false) }
+                    ClarifierLogInputField("PURITY COEFFICIENT (%)", state.clearJuicePurity, palette, Modifier.weight(1f)) { state = state.copy(clearJuicePurity = it, isSubmitted = false) }
+                }
+            }
+        }
+    }
+
+    val RemarksContent = @Composable { modifier: Modifier ->
+        ClarifierFormSectionCard(title = "OPERATOR RECORDING LOG ANNOTATIONS", icon = Icons.Rounded.Notes, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(palette.inputContainer)
+                    .border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                BasicTextField(
+                    value = state.remarks,
+                    onValueChange = { state = state.copy(remarks = it, isSubmitted = false) },
+                    textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 14.sp),
+                    cursorBrush = SolidColor(palette.textPrimary),
+                    modifier = Modifier.fillMaxSize().padding(end = 32.dp),
+                    decorationBox = { innerTextField ->
+                        if (state.remarks.isEmpty()) {
+                            Text(
+                                text = "INPUT LIVE CLARIFICATION ANOMALIES, PH BALANCES SLIP PAGES OR GENERAL NOTE ASSISTANCES...",
+                                color = if (isListening) TechAlarmRed else palette.textMuted,
+                                fontSize = 13.sp,
+                                fontFamily = FontTelemetryMono,
+                                lineHeight = 20.sp
                             )
+                        }
+                        innerTextField()
+                    }
+                )
 
-                            Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                                if (isTranslating) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = TechAccentBlue, strokeWidth = 2.dp)
-                                } else {
-                                    IconButton(
-                                        modifier = Modifier.size(32.dp),
-                                        onClick = {
-                                            if (!isListening) {
-                                                val hasRecordPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
-                                                        android.content.pm.PackageManager.PERMISSION_GRANTED
-                                                if (hasRecordPermission) {
-                                                    speechTranslator.startListening(
-                                                        onStatusChange = { currentVoiceStatusText = it },
-                                                        onListeningStateChange = { isListening = it },
-                                                        onTranslatingStateChange = { isTranslating = it },
-                                                        onResultReceived = { state = state.copy(remarks = it, isSubmitted = false) }
-                                                    )
-                                                } else {
-                                                    (context as? android.app.Activity)?.requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(imageVector = if (isListening) Icons.Rounded.Mic else Icons.Rounded.MicNone, contentDescription = null, tint = if (isListening) TechAlarmRed else TechAccentBlue, modifier = Modifier.size(26.dp))
+                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                    if (isTranslating) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = TechAccentBlue, strokeWidth = 2.dp)
+                    } else {
+                        IconButton(
+                            modifier = Modifier.size(32.dp),
+                            onClick = {
+                                if (!isListening) {
+                                    val hasRecordPermission = context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
+                                            android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (hasRecordPermission) {
+                                        speechTranslator.startListening(
+                                            onStatusChange = { currentVoiceStatusText = it },
+                                            onListeningStateChange = { isListening = it },
+                                            onTranslatingStateChange = { isTranslating = it },
+                                            onResultReceived = { state = state.copy(remarks = it, isSubmitted = false) }
+                                        )
+                                    } else {
+                                        (context as? android.app.Activity)?.requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
                                     }
                                 }
                             }
-                        }
-                    }
-
-                    // Glassfrost Signature Box
-                    ClarifierFormSectionCard(title = "OPERATOR DIGITAL SIGNATURE VALIDATION", icon = Icons.Rounded.Draw, palette = palette, isDark = isDarkThemeOverride) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("DRAW RECOGNIZED SIGNATURE ON CANVAS:", color = palette.textPrimary, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
-                                Text(text = "RESET TRACE", color = TechAlarmRed, fontSize = 10.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 6.dp, vertical = 2.dp))
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(115.dp)
-                                    .shadow(elevation = 6.dp, shape = RoundedCornerShape(8.dp))
-                                    .background(palette.glassFill, RoundedCornerShape(8.dp))
-                                    .border(1.dp, palette.glassBorder, RoundedCornerShape(8.dp))
-                            ) {
-                                if (signaturePoints.isEmpty()) {
-                                    Text(text = "TOUCH SCREEN OR STYLUS INTERACTION INTERFACE ACTIVE...", color = palette.textMuted.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = FontTelemetryMono, modifier = Modifier.align(Alignment.Center))
-                                }
-                                SignatureCaptureCanvas(
-                                    points = signaturePoints,
-                                    strokeColor = if (isDarkThemeOverride) TechAccentBlue else MinimalistTextPrimary, // ✅ FIXED: Replaced old PremiumTextPrimary token reference
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+                        ) {
+                            Icon(imageVector = if (isListening) Icons.Rounded.Mic else Icons.Rounded.MicNone, contentDescription = null, tint = if (isListening) TechAlarmRed else TechAccentBlue, modifier = Modifier.size(26.dp))
                         }
                     }
                 }
             }
+        }
+    }
 
-            // ============================================================================
-            // BOTTOM ACTION FOOTER BAR
-            // ============================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
-                    .background(palette.glassFill, RoundedCornerShape(10.dp))
-                    .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-            ) {
+    val SignatureContent = @Composable { modifier: Modifier ->
+        ClarifierFormSectionCard(title = "OPERATOR DIGITAL SIGNATURE VALIDATION", icon = Icons.Rounded.Draw, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("DRAW RECOGNIZED SIGNATURE ON CANVAS:", color = palette.textPrimary, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                    Text(text = "RESET TRACE", color = TechAlarmRed, fontSize = 10.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                Spacer(modifier = Modifier.height(6.dp))
                 Box(
                     modifier = Modifier
-                        .height(38.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (signaturePoints.isNotEmpty()) TechAccentGreen.copy(alpha = 0.15f) else TechAlarmRed.copy(alpha = 0.08f))
-                        .border(1.dp, if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 14.dp),
+                        .fillMaxWidth()
+                        .weight(1f) // Ensures canvas expands into available space
+                        .shadow(elevation = 6.dp, shape = RoundedCornerShape(8.dp))
+                        .background(palette.glassFill, RoundedCornerShape(8.dp))
+                        .border(1.dp, palette.glassBorder, RoundedCornerShape(8.dp))
+                ) {
+                    if (signaturePoints.isEmpty()) {
+                        Text(text = "TOUCH SCREEN OR STYLUS INTERACTION INTERFACE ACTIVE...", color = palette.textMuted.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = FontTelemetryMono, modifier = Modifier.align(Alignment.Center), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    SignatureCaptureCanvas(
+                        points = signaturePoints,
+                        strokeColor = palette.textPrimary, // Adjusted dynamically based on theme palette
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
+    }
+
+    val FooterContent = @Composable {
+        val containerModifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
+            .background(palette.glassFill, RoundedCornerShape(10.dp))
+            .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
+            .padding(8.dp)
+
+        val statusBadge = @Composable {
+            Box(
+                modifier = Modifier
+                    .height(38.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(if (signaturePoints.isNotEmpty()) TechAccentGreen.copy(alpha = 0.15f) else TechAlarmRed.copy(alpha = 0.08f))
+                    .border(1.dp, if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = if (signaturePoints.isNotEmpty()) "ESIGN LOCK DETECTED ✔" else "ESIGN SIGNATURE TRACE MISSING ❌", color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black)
+            }
+        }
+
+        val actionButtons = @Composable {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.height(36.dp).clickable { state = FlotationClarifierState(); signaturePoints.clear() }.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                    Text("RESET LOCK", color = palette.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
+                }
+                Box(
+                    modifier = Modifier
+                        .height(40.dp)
+                        .then(if (isPortrait) Modifier.fillMaxWidth() else Modifier.width(220.dp))
+                        .clip(RoundedCornerShape(50))
+                        .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
+                        .clickable { if (signaturePoints.isNotEmpty()) { state = state.copy(isSubmitted = true); onNavigationCallback() } },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = if (signaturePoints.isNotEmpty()) "ESIGN LOCK DETECTED ✔" else "ESIGN SIGNATURE TRACE MISSING ❌", color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black)
+                    Text("COMMIT JOURNAL LOG", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                }
+            }
+        }
+
+        if (isPortrait) {
+            Column(modifier = containerModifier, verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                statusBadge()
+                actionButtons()
+            }
+        } else {
+            Row(modifier = containerModifier, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                statusBadge()
+                actionButtons()
+            }
+        }
+    }
+
+    // ============================================================================
+    // 🧱 PARENT LAYOUT MANAGER
+    // ============================================================================
+    Box(
+        modifier = Modifier.fillMaxSize().then(structuralBackgroundModifier).padding(12.dp),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        if (isPortrait) {
+            // 📱 PORTRAIT LAYOUT
+            Column(modifier = Modifier.fillMaxSize()) {
+                HeaderContent()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    TimelinesContent(Modifier.fillMaxWidth())
+                    ChemistryContent(Modifier.fillMaxWidth())
+                    RemarksContent(Modifier.fillMaxWidth().height(180.dp))
+                    SignatureContent(Modifier.fillMaxWidth().height(220.dp))
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(modifier = Modifier.height(36.dp).clickable { state = FlotationClarifierState(); signaturePoints.clear() }.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                        Text("RESET LOCK", color = palette.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
-                    }
-                    Box(
-                        modifier = Modifier
-                            .height(40.dp)
-                            .width(220.dp)
-                            .clip(RoundedCornerShape(50))
-                            .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
-                            .clickable { if (signaturePoints.isNotEmpty()) { state = state.copy(isSubmitted = true); onNavigationCallback() } },
-                        contentAlignment = Alignment.Center
+                Spacer(modifier = Modifier.height(12.dp))
+                FooterContent()
+            }
+        } else {
+            // 💻 LANDSCAPE LAYOUT
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                HeaderContent()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // LEFT SIDE
+                    Column(
+                        modifier = Modifier.weight(1.1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text("COMMIT JOURNAL LOG", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                        TimelinesContent(Modifier)
+                        ChemistryContent(Modifier)
+                    }
+
+                    // RIGHT SIDE
+                    Column(
+                        modifier = Modifier.weight(1.1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        RemarksContent(Modifier.weight(1f))
+                        SignatureContent(Modifier.height(180.dp))
                     }
                 }
+
+                FooterContent()
             }
         }
     }
@@ -450,7 +512,7 @@ private fun ClarifierFormSectionCard(title: String, icon: ImageVector, palette: 
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(icon, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(16.dp))
-            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
+            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(modifier = Modifier.height(8.dp))
         content()
@@ -468,7 +530,7 @@ private fun ClarifierLogInputField(label: String, value: String, palette: Clarif
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(1.dp))
             BasicTextField(
                 value = value, onValueChange = onValueChange,

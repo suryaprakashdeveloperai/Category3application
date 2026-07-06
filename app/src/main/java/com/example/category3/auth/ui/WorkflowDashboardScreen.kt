@@ -1,24 +1,22 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.example.category3.auth.ui
 
+import android.content.res.Configuration
 import android.graphics.Paint
 import android.os.Build
+import androidx.annotation.RawRes
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,36 +28,38 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.ElectricBolt
 import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.Schedule
-import androidx.compose.material.icons.outlined.Sensors
-import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -72,1380 +72,1948 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import com.example.category3.R
 import com.example.category3.components.RadialAppBar
 import kotlinx.coroutines.delay
-import java.util.UUID
-import kotlin.math.hypot
-import kotlin.random.Random
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
-// ============================================================================
-// 🎨 STRICT CUSTOM BRAND PALETTE
-// ============================================================================
-val BrandDeepNavy = Color(0xFF0A0D2F)
+val BrandDeepNavy     = Color(0xFF0A0D2F)
 val BrandDarkBlueGray = Color(0xFF223B57)
-val BrandSteelGray = Color(0xFF8C929C)
-val BrandLightGray = Color(0xFFBCBCBF)
-val BrandOffWhite = Color(0xFFF6F6F7)
-val BrandCyanBlue = Color(0xFF47B3E2)
-val BrandMutedBlue = Color(0xFF496D89)
-val BrandTeal = Color(0xFF11CFC9)
-val BrandOrange = Color(0xFFF68420)
-val BrandSoftOrange = Color(0xFFD68A51)
+val BrandSteelGray    = Color(0xFF8C929C)
+val BrandLightGray    = Color(0xFFBCBCBF)
+val BrandOffWhite     = Color(0xFFF6F6F7)
+val BrandCyanBlue     = Color(0xFF47B3E2)
+val BrandMutedBlue    = Color(0xFF496D89)
+val BrandTeal         = Color(0xFF11CFC9)
+val BrandOrange       = Color(0xFFF68420)
+val BrandSoftOrange   = Color(0xFFD68A51)
+
+val AccentPrimary  = BrandCyanBlue
+val AccentSuccess  = BrandTeal
+val AccentWarning  = BrandSoftOrange
+val AccentCritical = BrandOrange
+val AccentAI       = BrandMutedBlue
 
 data class DashboardTheme(
-    val isDark: Boolean, val textMain: Color, val textMuted: Color, val textLightMuted: Color, val trackBg: Color
+    val isDark: Boolean,
+    val textMain: Color,
+    val textMuted: Color,
+    val textLightMuted: Color,
+    val trackBg: Color
 )
 
-fun getAdaptiveTheme(isDark: Boolean): DashboardTheme {
-    return if (isDark) {
-        DashboardTheme(isDark = true, textMain = BrandOffWhite, textMuted = BrandLightGray, textLightMuted = BrandSteelGray, trackBg = BrandDeepNavy.copy(alpha = 0.5f))
+fun getAdaptiveTheme(isDark: Boolean): DashboardTheme =
+    if (isDark) {
+        DashboardTheme(
+            true,
+            BrandOffWhite,
+            BrandLightGray,
+            BrandSteelGray,
+            BrandDeepNavy.copy(alpha = 0.5f)
+        )
     } else {
-        DashboardTheme(isDark = false, textMain = BrandDeepNavy, textMuted = BrandMutedBlue, textLightMuted = BrandSteelGray, trackBg = BrandLightGray.copy(alpha = 0.3f))
-    }
-}
-
-// Map logical colors strictly to the new palette
-val AccentPrimary = BrandCyanBlue
-val AccentSuccess = BrandTeal
-val AccentWarning = BrandSoftOrange
-val AccentCritical = BrandOrange
-val AccentAI = BrandMutedBlue
-
-// ============================================================================
-// 📡 DATA SPEC & MODELS
-// ============================================================================
-data class RecommendationData(val id: String, val problem: String, val suggestion: String, val priority: String, val stageName: String)
-
-data class LiveStageData(
-    val id: String, val name: String, val status: String,
-    val juicePercentage: Double, val actualFlow: Float, val targetFlow: Float,
-    val energyKw: Float, val throughputKg: Int, val downtimeMins: Int,
-    val stageRecommendations: List<RecommendationData>, val tintColor: Color,
-    val aiProjection: Float, val tempC: Float, val vibrationHz: Float, val pressureBar: Float
-)
-
-data class AlertData(val id: String, val stage: String, val message: String, val priority: String, val metricFailed: String = "", val details: String = "")
-
-// ============================================================================
-// 📱 MAIN SCREEN COMPOSABLE
-// ============================================================================
-@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-@Composable
-fun WorkflowDashboardScreen(onNavigateToScreen: (String) -> Unit = {}) {
-    val context = LocalContext.current
-    val density = context.resources.displayMetrics.density
-    var isLightMode by remember { mutableStateOf(true) }
-    val theme = getAdaptiveTheme(!isLightMode)
-
-    // STATE VARIABLES
-    var globalOee by remember { mutableStateOf(87) }
-    var globalEnergy by remember { mutableStateOf(217f) }
-    var globalThroughput by remember { mutableStateOf(495) }
-
-    val energyHistory = remember { mutableStateListOf(160f, 165f, 172f, 168f, 175f, 180f, 178f, 182f, 184f) }
-    val oeeHistory = remember { mutableStateListOf(82f, 83f, 81f, 85f, 86f, 84f, 87f, 88f, 87f) }
-
-    var stages by remember {
-        mutableStateOf(
-            listOf(
-                LiveStageData("01", "MILL", "RUN", 25.0, 25f, 30f, 47f, 110, 15, listOf(RecommendationData("1", "Vibration exceeding 120Hz.", "Increase Mill Core Speed.", "High", "MILL")), AccentPrimary, 25f, 64f, 124f, 2.5f),
-                LiveStageData("02", "DEFECATION", "RUN", 45.0, 47f, 45f, 26f, 95, 5, listOf(RecommendationData("2", "pH dropping rapidly.", "Add Lime Stabilizer automatically.", "Medium", "DEFECATION")), AccentSuccess, 39f, 82f, 43f, 1.2f),
-                LiveStageData("03", "EVAPORATION", "BLOCK", 85.0, 86f, 80f, 64f, 80, 45, listOf(RecommendationData("3", "Thermal buildup detected.", "Clear Tube Blockage immediately.", "Critical", "EVAPORATION")), AccentCritical, 70f, 100f, 51f, 3.8f),
-                LiveStageData("04", "CLARIFICATION", "RUN", 50.0, 50f, 60f, 34f, 105, 12, listOf(RecommendationData("4", "Turbidity increasing.", "Adjust Flocculant Rate by 5%.", "Low", "CLARIFICATION")), AccentAI, 34f, 75f, 64f, 1.8f),
-                LiveStageData("05", "CONCENTRATION", "RUN", 60.0, 61f, 75f, 45f, 105, 8, listOf(RecommendationData("5", "Vacuum pressure drop.", "Calibrate Vacuum Pump.", "Medium", "CONCENTRATION")), AccentWarning, 71f, 59f, 80f, 0.4f)
-            )
+        DashboardTheme(
+            false,
+            BrandDeepNavy,
+            BrandMutedBlue,
+            BrandSteelGray,
+            BrandLightGray.copy(alpha = 0.3f)
         )
     }
 
-    var selectedStageId by remember { mutableStateOf<String?>(null) }
-    val activeAlerts = remember { mutableStateListOf<AlertData>() }
-    val activeAiLogs = remember { mutableStateListOf<RecommendationData>() }
-    var toastAlert by remember { mutableStateOf<AlertData?>(null) }
-    var popupAlertToView by remember { mutableStateOf<AlertData?>(null) }
-    var zyrenPopupData by remember { mutableStateOf<RecommendationData?>(null) }
+data class StageAlertSummary(
+    val critical: Int,
+    val warning: Int
+)
 
+data class StageCardDisplay(
+    val primaryLabel: String,
+    val primaryValue: String,
+    val primaryUnit: String,
+    val stat1Label: String,
+    val stat1Value: String,
+    val stat2Label: String,
+    val stat2Value: String,
+    val stat3Label: String,
+    val stat3Value: String
+)
+
+fun stageCardDisplay(stage: LiveStageData): StageCardDisplay = when (stage.id) {
+    "01" -> StageCardDisplay(
+        "THROUGHPUT",
+        String.format("%,.0f", stage.actualFlow),
+        "kg/hr",
+        "MOTOR", "${stage.energyKw.toInt()}A",
+        "RPM", "${stage.vibrationHz.toInt()}",
+        "TEMP", "${stage.tempC.toInt()}°C"
+    )
+    "02" -> StageCardDisplay(
+        "pH LEVEL",
+        String.format("%.2f", stage.pressureBar),
+        "pH",
+        "DJ TEMP", "${stage.tempC.toInt()}°C",
+        "TANK", "${stage.tankFillPercent}%",
+        "PUMP", "${stage.vibrationHz.toInt()}A"
+    )
+    "03" -> StageCardDisplay(
+        "EVAP FLOW",
+        String.format("%.1f", stage.actualFlow),
+        "m³/hr",
+        "TEMP B1", "${stage.tempC.toInt()}°C",
+        "PRESS", String.format("%.2f", stage.pressureBar),
+        "BRIX", "${stage.efficiency}°Bx"
+    )
+    "04" -> StageCardDisplay(
+        "CJ FLOW",
+        String.format("%.2f", stage.actualFlow),
+        "L/hr",
+        "TEMP", "${stage.tempC.toInt()}°C",
+        "TANK", "${stage.tankFillPercent}%",
+        "FC VFD", "${stage.vibrationHz.toInt()}%"
+    )
+    "05" -> StageCardDisplay(
+        "SYRUP FLOW",
+        String.format("%,.0f", stage.actualFlow),
+        "L/hr",
+        "PAN TEMP", "${stage.tempC.toInt()}°C",
+        "VACUUM", "${stage.pressureBar.toInt()}mb",
+        "RPM", "${stage.vibrationHz.toInt()}"
+    )
+    else -> StageCardDisplay(
+        "FLOW",
+        String.format("%,.0f", stage.actualFlow),
+        "u/hr",
+        "TEMP", "${stage.tempC.toInt()}°C",
+        "VIB", "${stage.vibrationHz.toInt()}Hz",
+        "PWR", "${stage.energyKw.toInt()}kW"
+    )
+}
+
+enum class AyamMood {
+    NORMAL,
+    WARNING,
+    CRITICAL
+}
+
+@RawRes
+fun ayamVideoForMood(mood: AyamMood): Int = when (mood) {
+    AyamMood.NORMAL -> R.raw.ayam_happy
+    AyamMood.WARNING -> R.raw.ayam_sad
+    AyamMood.CRITICAL -> R.raw.ayam_angry
+}
+
+@Composable
+fun AyamVideoAvatar(
+    modifier: Modifier = Modifier,
+    @RawRes videoResId: Int
+) {
+    val context = LocalContext.current
+
+    val exoPlayer = remember(videoResId) {
+        ExoPlayer.Builder(context).build().apply {
+            val uri = "android.resource://${context.packageName}/$videoResId"
+            setMediaItem(MediaItem.fromUri(uri))
+            repeatMode = Player.REPEAT_MODE_ALL
+            playWhenReady = true
+            volume = 0f
+            prepare()
+        }
+    }
+
+    DisposableEffect(exoPlayer) {
+        onDispose { exoPlayer.release() }
+    }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                useController = false
+                player = exoPlayer
+
+                // IMPORTANT: use TextureView, not SurfaceView
+//             setSurfaceType(PlayerView.SURFACE_TYPE_TEXTURE_VIEW)
+
+                // Fill the circle, no letterboxing
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+
+                // No black shutter or background
+                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            }
+        },
+        update = { view ->
+            view.player = exoPlayer
+        }
+    )
+}
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
+@Composable
+fun WorkflowDashboardScreen(
+    viewModel: DashboardViewModel,
+    onNavigateToScreen: (String) -> Unit
+) {
+    val theme = getAdaptiveTheme(false)
+
+    val globalOee by viewModel.globalOee.collectAsStateWithLifecycle()
+    val globalEnergy by viewModel.globalEnergy.collectAsStateWithLifecycle()
+    val globalThroughput by viewModel.globalThroughput.collectAsStateWithLifecycle()
+    val stages by viewModel.stages.collectAsStateWithLifecycle()
+    val activeAlerts by viewModel.activeAlerts.collectAsStateWithLifecycle()
+
+    var selectedStageId by remember { mutableStateOf<String?>(null) }
+    var ayamPopupData by remember { mutableStateOf<RecommendationData?>(null) }
+    var isAyamAssistOpen by remember { mutableStateOf(false) }
+
+    val activeAiLogs = remember(stages) { stages.flatMap { it.recommendations } }
+
+    val stageAlertSummary = remember(activeAlerts) {
+        activeAlerts
+            .groupBy { it.stage.uppercase() }
+            .mapValues { (_, alerts) ->
+                val crit = alerts.count { it.priority.equals("CRITICAL", ignoreCase = true) }
+                val warn = alerts.count { it.priority.equals("WARNING", ignoreCase = true) }
+                StageAlertSummary(crit, warn)
+            }
+    }
+
+    val ayamMood = remember(activeAlerts) {
+        val hasCritical = activeAlerts.any {
+            !it.acknowledged && it.priority.equals("CRITICAL", ignoreCase = true)
+        }
+        val hasWarning = activeAlerts.any {
+            !it.acknowledged && it.priority.equals("WARNING", ignoreCase = true)
+        }
+        when {
+            hasCritical -> AyamMood.CRITICAL
+            hasWarning -> AyamMood.WARNING
+            else -> AyamMood.NORMAL
+        }
+    }
+
+    var heatmapTick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
             delay(1000)
-            stages = stages.map {
-                it.copy(
-                    actualFlow = (it.actualFlow + Random.nextFloat() * 4f - 2f).coerceIn(10f, 100f),
-                    aiProjection = (it.aiProjection + Random.nextFloat() * 2f - 1f).coerceIn(10f, 100f),
-                    tempC = (it.tempC + Random.nextFloat() * 2f - 1f).coerceIn(40f, 120f),
-                    vibrationHz = (it.vibrationHz + Random.nextFloat() * 5f - 2.5f).coerceIn(30f, 150f),
-                    energyKw = (it.energyKw + Random.nextFloat() * 3f - 1.5f).coerceIn(20f, 80f),
-                    juicePercentage = (it.juicePercentage + Random.nextDouble(-2.0, 2.0)).coerceIn(10.0, 99.0)
+            heatmapTick++
+        }
+    }
+
+    val energyHistory = remember {
+        mutableStateListOf(160f, 165f, 172f, 168f, 175f, 180f, 178f, 182f, 184f)
+    }
+    LaunchedEffect(globalEnergy) {
+        energyHistory.add(globalEnergy.toFloat())
+        if (energyHistory.size > 15) energyHistory.removeAt(0)
+    }
+
+    val throughputHistory = remember {
+        mutableStateListOf(100f, 110f, 115f, 108f, 120f, 130f, 125f, 140f, 138f)
+    }
+    LaunchedEffect(globalThroughput) {
+        throughputHistory.add(globalThroughput.toFloat())
+        if (throughputHistory.size > 15) throughputHistory.removeAt(0)
+    }
+
+    val displayStages = remember(stages) {
+        val evapIdx =
+            stages.indexOfFirst { it.id == "03" || it.name.contains("Evap", ignoreCase = true) }
+        val clarIdx =
+            stages.indexOfFirst { it.id == "04" || it.name.contains("Clar", ignoreCase = true) }
+        if (evapIdx != -1 && clarIdx != -1 && evapIdx != clarIdx) {
+            stages.toMutableList().apply {
+                val tmp = this[evapIdx]
+                this[evapIdx] = this[clarIdx]
+                this[clarIdx] = tmp
+            }
+        } else stages
+    }
+
+    val activeStage = displayStages.find { it.id == selectedStageId }
+    val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.linearGradient(listOf(BrandOffWhite, Color.White)))
+    ) {
+        if (isPortrait) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                GraphPanel(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(420.dp),
+                    theme = theme,
+                    displayStages = displayStages,
+                    selectedStageId = selectedStageId,
+                    onStageSelected = { selectedStageId = it },
+                    heatmapTick = heatmapTick,
+                    isPortrait = true,
+                    alertSummary = stageAlertSummary
                 )
-            }
 
-            globalOee = stages.map { it.juicePercentage }.average().toInt()
-            globalEnergy = stages.map { it.energyKw }.sum()
-            globalThroughput = stages.map { it.throughputKg }.sum()
-
-            energyHistory.add(globalEnergy)
-            if (energyHistory.size > 15) energyHistory.removeAt(0)
-            oeeHistory.add(globalOee.toFloat())
-            if (oeeHistory.size > 15) oeeHistory.removeAt(0)
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        val randomAlerts = listOf(
-            AlertData("A1", "MILL", "Pressure Drop in Core", "WARNING", "PRES: 1.2 Bar", "Hydraulic pressure fell below operational baseline."),
-            AlertData("A2", "MILL", "Pressure Drop in Core", "WARNING", "PRES: 1.2 Bar", "Hydraulic pressure fell below operational baseline.")
-        )
-        while (true) {
-            delay(5000)
-            val nextToast = randomAlerts.random().copy(id = UUID.randomUUID().toString())
-            toastAlert = nextToast
-            activeAlerts.add(0, nextToast)
-            if(activeAlerts.size > 15) activeAlerts.removeLast()
-            delay(3000)
-            if (toastAlert?.id == nextToast.id) toastAlert = null
-        }
-    }
-
-    val actualLinePath = remember { Path() }
-    val predictLinePath = remember { Path() }
-    val yAxisPaint = remember(theme) { Paint().apply { color = theme.textMuted.toArgb(); textSize = 10f * density; isFakeBoldText = true } }
-    val stageNamePaint = remember(theme) { Paint().apply { color = theme.textMain.toArgb(); textSize = 11f * density; textAlign = Paint.Align.CENTER; isFakeBoldText = true } }
-    val predictTextPaint = remember { Paint().apply { color = AccentSuccess.toArgb(); textSize = 12f * density; textAlign = Paint.Align.CENTER; isFakeBoldText = true } }
-    val actualTextPaint = remember { Paint().apply { color = AccentPrimary.toArgb(); textSize = 12f * density; textAlign = Paint.Align.CENTER; isFakeBoldText = true } }
-
-    val activeStage = stages.find { it.id == selectedStageId }
-    val displayOee = activeStage?.juicePercentage?.toFloat() ?: globalOee.toFloat()
-    val displayEnergy = activeStage?.energyKw ?: globalEnergy
-    val displayThroughput = activeStage?.throughputKg?.toFloat() ?: globalThroughput.toFloat()
-    val displayProjection = activeStage?.aiProjection ?: stages.map { it.aiProjection }.average().toFloat()
-
-    val animOee by animateFloatAsState(targetValue = displayOee, animationSpec = tween(800), label = "")
-    val animEnergy by animateFloatAsState(targetValue = displayEnergy, animationSpec = tween(800), label = "")
-    val animThroughput by animateFloatAsState(targetValue = displayThroughput, animationSpec = tween(800), label = "")
-    val animProjection by animateFloatAsState(targetValue = displayProjection, animationSpec = tween(800), label = "")
-
-    val bgBrush = if (theme.isDark) Brush.linearGradient(listOf(BrandDeepNavy, BrandDarkBlueGray))
-    else Brush.linearGradient(listOf(BrandOffWhite, Color.White))
-
-    Box(modifier = Modifier.fillMaxSize().background(bgBrush)) {
-
-        Column(modifier = Modifier.fillMaxSize().padding(start = 32.dp, top = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-
-            // HEADER
-            Row(modifier = Modifier.fillMaxWidth().padding(start = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("AURALISS DASHBOARD", color = theme.textMain, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
-
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val matrixColor by animateColorAsState(if(isLightMode) BrandOrange else BrandCyanBlue, label="")
-                    Text(if(isLightMode) "☀️ MATRIX LIGHT" else "🌙 MATRIX DARK", color = matrixColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Switch(checked = isLightMode, onCheckedChange = { isLightMode = it }, colors = SwitchDefaults.colors(checkedThumbColor = BrandOffWhite, checkedTrackColor = BrandDarkBlueGray.copy(alpha=0.5f), uncheckedThumbColor = BrandOffWhite, uncheckedTrackColor = BrandMutedBlue), modifier = Modifier.scale(0.8f).height(24.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(modifier = Modifier.size(42.dp).clip(CircleShape).background(BrandLightGray.copy(alpha = 0.3f)), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.AccountCircle, null, tint = theme.textMuted, modifier = Modifier.size(28.dp)) }
-                }
-            }
-
-            Row(modifier = Modifier.fillMaxSize().padding(start = 24.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-
-                // ⬅️ LEFT COLUMN
-                Column(modifier = Modifier.weight(2.1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-
-                    CleanPanel(theme, modifier = Modifier.weight(2f).fillMaxWidth()) {
-                        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-                            Column(modifier = Modifier.padding(bottom = 8.dp)) {
-                                Text("PRODUCTION FLOW TREND (OEE %)", color = theme.textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Interactive Canvas:", color = theme.textMuted, fontSize = 12.sp)
-                                    Text("Tap dotted nodes to trigger AI Diagnosis & log to history.", color = AccentAI, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-
-                            Box(modifier = Modifier.fillMaxWidth().weight(1.5f).padding(bottom = 16.dp, top = 24.dp)) {
-                                Canvas(modifier = Modifier.fillMaxSize().pointerInput(stages) {
-                                    detectTapGestures { offset ->
-                                        val w = this.size.width.toFloat(); val h = this.size.height.toFloat()
-                                        val paddingLeft = 35.dp.toPx()
-                                        val stepX = (w - paddingLeft - 20.dp.toPx()) / (stages.size - 1)
-
-                                        stages.forEachIndexed { i, stage ->
-                                            val nx = paddingLeft + (i * stepX)
-                                            val py = h - 20.dp.toPx() - ((stage.aiProjection / 100f) * (h - 20.dp.toPx()))
-
-                                            if (hypot(offset.x - nx, offset.y - py) < 50.dp.toPx()) {
-                                                val aiRec = stage.stageRecommendations.firstOrNull()
-                                                if (aiRec != null) {
-                                                    zyrenPopupData = aiRec
-                                                    if (!activeAiLogs.any { it.id == aiRec.id }) {
-                                                        activeAiLogs.add(0, aiRec)
-                                                        if(activeAiLogs.size > 10) activeAiLogs.removeLast()
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }) {
-                                    val w = size.width; val h = size.height;
-                                    val paddingLeft = 35.dp.toPx()
-                                    val graphW = w - paddingLeft - 20.dp.toPx(); val graphH = h - 20.dp.toPx()
-                                    fun calcY(f: Float) = graphH - ((f / 100f) * graphH).coerceIn(0f, graphH)
-
-                                    actualLinePath.reset(); predictLinePath.reset()
-                                    val stepX = graphW / (stages.size - 1)
-
-                                    // 1. Draw Alternating Background Columns
-                                    stages.forEachIndexed { i, _ ->
-                                        val nx = paddingLeft + (i * stepX)
-                                        val bandLeft = if (i == 0) paddingLeft else nx - (stepX / 2)
-                                        val bandRight = if (i == stages.size - 1) w else nx + (stepX / 2)
-                                        val bandWidth = bandRight - bandLeft
-
-                                        val bandColor = if (i % 2 == 0) AccentPrimary.copy(alpha = if(theme.isDark) 0.08f else 0.04f)
-                                        else AccentSuccess.copy(alpha = if(theme.isDark) 0.08f else 0.04f)
-
-                                        drawRect(
-                                            color = bandColor,
-                                            topLeft = Offset(bandLeft, 0f),
-                                            size = Size(bandWidth, graphH)
-                                        )
-                                    }
-
-                                    // 2. Draw Y-Axis & Grids
-                                    drawLine(theme.textMuted.copy(alpha=0.5f), Offset(paddingLeft - 10.dp.toPx(), 0f), Offset(paddingLeft - 10.dp.toPx(), graphH), 1.5.dp.toPx())
-                                    listOf(0f, 25f, 50f, 75f, 100f).forEach { tick ->
-                                        val y = calcY(tick)
-                                        drawContext.canvas.nativeCanvas.drawText("${tick.toInt()}%", 0f, y + 4.sp.toPx(), yAxisPaint)
-                                        drawLine(theme.textMuted.copy(alpha = 0.15f), Offset(paddingLeft, y), Offset(w, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f)))
-                                    }
-
-                                    // 3. Build Line Paths
-                                    stages.forEachIndexed { i, stage ->
-                                        val nx = paddingLeft + (i * stepX); val ay = calcY(stage.actualFlow); val py = calcY(stage.aiProjection)
-                                        if (i == 0) { actualLinePath.moveTo(nx, ay); predictLinePath.moveTo(nx, py) }
-                                        else { actualLinePath.lineTo(nx, ay); predictLinePath.lineTo(nx, py) }
-                                    }
-
-                                    // 4. Draw Lines
-                                    drawPath(predictLinePath, AccentSuccess.copy(alpha=0.9f), style = Stroke(2.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(15f, 15f))))
-                                    drawPath(actualLinePath, AccentPrimary, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-
-                                    // 5. Draw Dots & Text
-                                    stages.forEachIndexed { i, stage ->
-                                        val nx = paddingLeft + (i * stepX); val ay = calcY(stage.actualFlow); val py = calcY(stage.aiProjection)
-
-                                        // Predict Point (Green)
-                                        drawCircle(BrandOffWhite, 6.dp.toPx(), Offset(nx, py)); drawCircle(AccentSuccess, 4.dp.toPx(), Offset(nx, py))
-                                        drawContext.canvas.nativeCanvas.drawText("${stage.aiProjection.toInt()}%", nx, py + 22.sp.toPx(), predictTextPaint)
-
-                                        // Actual Point (Blue)
-                                        drawCircle(BrandOffWhite, 6.dp.toPx(), Offset(nx, ay)); drawCircle(AccentPrimary, 4.dp.toPx(), Offset(nx, ay))
-                                        drawContext.canvas.nativeCanvas.drawText("${stage.actualFlow.toInt()}%", nx, ay - 12.sp.toPx(), actualTextPaint)
-
-                                        // Stage Name
-                                        drawContext.canvas.nativeCanvas.drawText(stage.name, nx, 10.sp.toPx(), stageNamePaint)
-                                    }
-                                }
-                            }
-
-                            Row(modifier = Modifier.fillMaxWidth().weight(0.9f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                stages.forEach { stage ->
-                                    val isSelected = selectedStageId == stage.id
-                                    val animCardOee by animateFloatAsState(targetValue = stage.juicePercentage.toFloat(), animationSpec = tween(500), label = "")
-
-                                    Box(
-                                        modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
-                                            .background(if (isSelected) stage.tintColor.copy(alpha = 0.2f) else theme.trackBg.copy(alpha=0.3f))
-                                            .border(if (isSelected) 2.dp else 1.dp, if (isSelected) stage.tintColor else BrandLightGray.copy(0.2f), RoundedCornerShape(16.dp))
-                                            .clickable { selectedStageId = if(selectedStageId == stage.id) null else stage.id }
-                                    ) {
-                                        val fillHeight = (animCardOee / 100f).coerceIn(0f, 1f)
-
-                                        // Small bar joined at the edge showing the level
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomEnd)
-                                                .padding(vertical = 4.dp)
-                                                .width(6.dp)
-                                                .fillMaxHeight(fillHeight)
-                                                .clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp))
-                                                .background(stage.tintColor)
-                                        )
-
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(start = 8.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text(stage.name, color = theme.textMain, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-
-                                            // Stage and Flow Rate combined in the box
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text(
-                                                    text = "${stage.actualFlow.toInt()}",
-                                                    color = if(isLightMode) theme.textLightMuted else BrandOffWhite,
-                                                    fontSize = 24.sp,
-                                                    fontWeight = FontWeight.Black,
-                                                    style = TextStyle(shadow = Shadow(color = BrandDeepNavy.copy(alpha = 0.1f), offset = Offset(0f, 2f), blurRadius = 4f))
-                                                )
-                                                Text("FLOW RATE", color = stage.tintColor, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                                            }
-
-                                            val statStyle = TextStyle(shadow = Shadow(color = BrandDeepNavy.copy(alpha = 0.1f), blurRadius = 2f))
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Text("TMP: ${stage.tempC.toInt()}°C", color = if(isLightMode) theme.textLightMuted else BrandOffWhite, fontSize = 9.sp, fontWeight = FontWeight.Bold, style = statStyle)
-                                                Text("VIB: ${stage.vibrationHz.toInt()}Hz", color = if(isLightMode) theme.textLightMuted else BrandOffWhite, fontSize = 9.sp, fontWeight = FontWeight.Bold, style = statStyle)
-                                                Text("PWR: ${stage.energyKw.toInt()}kW", color = if(isLightMode) theme.textLightMuted else BrandOffWhite, fontSize = 9.sp, fontWeight = FontWeight.Bold, style = statStyle)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Row(modifier = Modifier.fillMaxWidth().height(150.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                        CleanPanel(theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            Column(Modifier.fillMaxSize().padding(20.dp)) {
-                                Text(if(activeStage != null) "${activeStage.name} AI PROJECTION" else "GLOBAL AI PROJECTIONS", color = theme.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.height(8.dp))
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text("${String.format("%.1f", animProjection)}", color = AccentAI, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-                                    Text("T/hr", color = theme.textMuted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
-                                }
-                                Spacer(Modifier.weight(1f))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val trendColor = if(animProjection > 50f) AccentSuccess else AccentCritical
-                                    Icon(Icons.Rounded.ArrowUpward, null, tint = trendColor, modifier = Modifier.size(16.dp))
-                                    Text(" ${if(animProjection > 50f) "8.2%" else "-14%"} vs Current", color = trendColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                }
-                                Text(if(activeStage != null) "Stage AI Forecast" else "System Next 4 Hours Forecast", color = theme.textLightMuted, fontSize = 11.sp)
-                            }
-                        }
-
-                        CleanPanel(theme, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                            Column(Modifier.fillMaxSize().padding(20.dp)) {
-                                Text(if(activeStage != null) "${activeStage.name} EFFICIENCY" else "GLOBAL OEE", color = theme.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("${animOee.toInt()}", color = activeStage?.tintColor ?: AccentPrimary, fontSize = 36.sp, fontWeight = FontWeight.Bold)
-                                    Text("%", color = theme.textMuted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
-                                }
-                                Spacer(Modifier.weight(1f))
-                                if(activeStage != null) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.WarningAmber, null, tint = AccentCritical, modifier = Modifier.size(14.dp))
-                                        Text(" Downtime: ${activeStage.downtimeMins} mins", color = AccentCritical, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                } else {
-                                    Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            val minVal = 70f; val maxVal = 100f; val stepX = size.width / (oeeHistory.size - 1).coerceAtLeast(1)
-                                            val chartPath = Path()
-                                            oeeHistory.forEachIndexed { i, value ->
-                                                val nx = i * stepX; val ny = size.height - ((value - minVal) / (maxVal - minVal) * size.height).coerceIn(0f, size.height)
-                                                if (i == 0) chartPath.moveTo(nx, ny) else chartPath.lineTo(nx, ny)
-                                            }
-                                            drawPath(chartPath, AccentPrimary, style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        CleanPanel(theme, modifier = Modifier.weight(1.2f).fillMaxHeight()) {
-                            Column(Modifier.fillMaxSize().padding(20.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    Icon(Icons.Outlined.Sensors, null, tint = theme.textMuted, modifier = Modifier.size(16.dp))
-                                    Text(if(activeStage != null) "${activeStage.name} TELEMETRY" else "SYSTEM TELEMETRY", color = theme.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Spacer(Modifier.height(12.dp))
-                                val t = activeStage?.tempC ?: stages.map{it.tempC}.average().toFloat()
-                                val v = activeStage?.vibrationHz ?: stages.map{it.vibrationHz}.average().toFloat()
-                                val p = activeStage?.pressureBar ?: stages.map{it.pressureBar}.average().toFloat()
-
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Column { Text(if(activeStage != null) "TEMP" else "AVG TEMP", color = theme.textLightMuted, fontSize = 10.sp); Text("${t.toInt()} °C", color = if(t > 90f) AccentCritical else theme.textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                                    Column { Text(if(activeStage != null) "VIBE" else "AVG VIBE", color = theme.textLightMuted, fontSize = 10.sp); Text("${v.toInt()} Hz", color = if(v > 150f) AccentWarning else theme.textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                                    Column { Text(if(activeStage != null) "PRES" else "AVG PRES", color = theme.textLightMuted, fontSize = 10.sp); Text(String.format("%.1f", p), color = theme.textMain, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                                }
-                                Spacer(Modifier.weight(1f))
-                                val stateColor = if(activeStage?.status == "BLOCK") AccentCritical else AccentSuccess
-                                Text("STATUS: ${activeStage?.status ?: "ALL NOMINAL"}", color = stateColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ProjectedKpiPanel(
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        theme = theme,
+                        displayStages = displayStages,
+                        activeStage = activeStage
+                    )
+                    EnergyPanel(
+                        modifier = Modifier.weight(1.5f).fillMaxHeight(),
+                        theme = theme,
+                        activeStage = activeStage,
+                        globalEnergy = globalEnergy.toFloat(),
+                        globalThroughput = globalThroughput.toFloat(),
+                        energyHistory = energyHistory,
+                        throughputHistory = throughputHistory
+                    )
                 }
 
-                // ➡️ RIGHT COLUMN
-                Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                SuggestionsPanel(
+                    modifier = Modifier.fillMaxWidth().height(180.dp),
+                    theme = theme,
+                    activeStage = activeStage,
+                    suggestions = activeAiLogs,
+                    onSuggestionClick = { ayamPopupData = it }
+                )
 
-                    // MERGED ENERGY AND THROUGHPUT BOX
-                    CleanPanel(theme, modifier = Modifier.fillMaxWidth().height(170.dp)) {
-                        Row(modifier = Modifier.fillMaxSize().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                AlertsPanel(
+                    modifier = Modifier.fillMaxWidth().height(380.dp),
+                    theme = theme,
+                    activeAlerts = activeAlerts,
+                    onNavigateToScreen = onNavigateToScreen
+                )
 
-                            // Left Side: Energy
-                            Column(Modifier.weight(1.2f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Box(Modifier.size(26.dp).background(AccentWarning.copy(alpha=0.15f), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.ElectricBolt, null, tint = AccentWarning, modifier = Modifier.size(16.dp)) }
-                                    Text(if(activeStage != null) "${activeStage.name} Energy" else "Global Energy", color = theme.textMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("${animEnergy.toInt()}", color = theme.textMain, fontSize = 38.sp, fontWeight = FontWeight.Bold)
-                                    Text("kW", color = theme.textMuted, fontSize = 14.sp, modifier = Modifier.padding(bottom = 6.dp))
-                                }
-                                Box(modifier = Modifier.fillMaxWidth().height(40.dp)) {
-                                    if(activeStage == null) {
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            val barWidth = size.width / (energyHistory.size * 1.5f); val minVal = 100f; val maxVal = 200f
-                                            energyHistory.forEachIndexed { index, value ->
-                                                val fillRatio = ((value - minVal) / (maxVal - minVal)).coerceIn(0.1f, 1f); val barHeight = fillRatio * size.height
-                                                val color = if (value > 180f) AccentCritical else if (value > 165f) AccentWarning else AccentSuccess
-                                                drawRoundRect(color = color, topLeft = Offset(index * (size.width / energyHistory.size.toFloat()), size.height - barHeight), size = Size(barWidth, barHeight), cornerRadius = CornerRadius(4.dp.toPx()))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Vertical Subtle Divider
-                            Box(modifier = Modifier.fillMaxHeight().width(1.dp).background(theme.textMuted.copy(alpha = 0.2f)))
-
-                            // Right Side: Throughput
-                            Column(Modifier.weight(1f).fillMaxHeight()) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    val tColor = activeStage?.tintColor ?: AccentPrimary
-                                    Box(Modifier.size(26.dp).background(tColor.copy(alpha=0.15f), CircleShape), contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Schedule, null, tint = tColor, modifier = Modifier.size(16.dp)) }
-                                    Text(if(activeStage != null) "Flow Rate" else "Throughput", color = theme.textMuted, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                }
-                                Spacer(Modifier.weight(1f))
-                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Text("${animThroughput.toInt()}", color = theme.textMain, fontSize = 32.sp, fontWeight = FontWeight.Bold)
-                                    Text("kg/h", color = theme.textMuted, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
-                                }
-                                // Empty spacer to balance layout with the energy chart space
-                                Spacer(Modifier.height(40.dp))
-                            }
-                        }
+                Spacer(Modifier.height(16.dp))
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(2.1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    GraphPanel(
+                        modifier = Modifier.fillMaxWidth().weight(2.5f),
+                        theme = theme,
+                        displayStages = displayStages,
+                        selectedStageId = selectedStageId,
+                        onStageSelected = { selectedStageId = it },
+                        heatmapTick = heatmapTick,
+                        isPortrait = false,
+                        alertSummary = stageAlertSummary
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ProjectedKpiPanel(
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                            theme = theme,
+                            displayStages = displayStages,
+                            activeStage = activeStage
+                        )
+                        SuggestionsPanel(
+                            modifier = Modifier.weight(2.2f).fillMaxHeight(),
+                            theme = theme,
+                            activeStage = activeStage,
+                            suggestions = activeAiLogs,
+                            onSuggestionClick = { ayamPopupData = it }
+                        )
                     }
-
-                    CleanPanel(theme, modifier = Modifier.fillMaxWidth().weight(1f)) {
-                        Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Zyren AI Predictions Log", color = AccentAI, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            }
-                            if(activeAiLogs.isEmpty()) {
-                                Text("No AI Logs stored. Tap a dashed prediction node on the graph to analyze.", color = theme.textMuted, fontSize = 12.sp, modifier = Modifier.padding(top=10.dp))
-                            } else {
-                                LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(activeAiLogs) { rec ->
-                                        Column(Modifier.fillMaxWidth().background(theme.trackBg.copy(alpha=0.2f), RoundedCornerShape(14.dp)).border(1.dp, theme.textMuted.copy(alpha=0.1f), RoundedCornerShape(14.dp)).clickable { zyrenPopupData = rec }.padding(14.dp)) {
-                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                                Text(rec.stageName, color = theme.textMain, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold)
-                                                val pColor = if(rec.priority == "Critical" || rec.priority == "High") AccentCritical else AccentWarning
-                                                Text(rec.priority, color = pColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                            }
-                                            Spacer(Modifier.height(6.dp))
-                                            Text("⚠️ ${rec.problem}", color = AccentCritical, fontSize = 12.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    CleanPanel(theme, modifier = Modifier.fillMaxWidth().weight(1.3f)) {
-                        Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-                            Text("Active Alerts & Bottlenecks", color = theme.textMain, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                            Text("Auto-logging anomalies every 5s.", color = theme.textLightMuted, fontSize = 11.sp)
-                            Spacer(Modifier.height(16.dp))
-
-                            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(activeAlerts, key = { it.id }) { alert ->
-                                    val isCrit = alert.priority == "CRITICAL"
-                                    val color = if(isCrit) AccentCritical else if(alert.priority == "WARNING") AccentWarning else AccentPrimary
-
-                                    Row(Modifier.fillMaxWidth().background(theme.trackBg.copy(alpha=0.2f), RoundedCornerShape(14.dp)).border(1.dp, color.copy(alpha=0.3f), RoundedCornerShape(14.dp)).clickable { popupAlertToView = alert }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(if(alert.priority == "INFO") Icons.Rounded.CheckCircle else Icons.Rounded.WarningAmber, null, tint = color, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(alert.message, color = theme.textMain, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                                            Text("${alert.stage} • ${alert.metricFailed}", color = color, fontSize = 11.sp)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    EnergyPanel(
+                        modifier = Modifier.fillMaxWidth().weight(0.7f),
+                        theme = theme,
+                        activeStage = activeStage,
+                        globalEnergy = globalEnergy.toFloat(),
+                        globalThroughput = globalThroughput.toFloat(),
+                        energyHistory = energyHistory,
+                        throughputHistory = throughputHistory
+                    )
+                    AlertsPanel(
+                        modifier = Modifier.fillMaxWidth().weight(2.3f),
+                        theme = theme,
+                        activeAlerts = activeAlerts,
+                        onNavigateToScreen = onNavigateToScreen
+                    )
                 }
             }
         }
 
-        // ============================================================================
-        // 🚨 DIALOG POPUPS
-        // ============================================================================
-        if (zyrenPopupData != null) {
-            Dialog(onDismissRequest = { zyrenPopupData = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    CleanPanel(theme = theme, modifier = Modifier.width(420.dp)) {
-                        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Outlined.Memory, null, tint = AccentAI, modifier = Modifier.size(28.dp))
-                                    Column { Text("ZYREN AI DIAGNOSIS", color = AccentAI, fontSize = 12.sp, fontWeight = FontWeight.Bold); Text(zyrenPopupData!!.stageName, color = theme.textMain, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                                }
-                                IconButton(onClick = { zyrenPopupData = null }) { Icon(Icons.Rounded.Close, null, tint = theme.textMuted) }
-                            }
-
-                            Column(modifier = Modifier.fillMaxWidth().background(AccentCritical.copy(0.1f), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                                Text("Predicted Bottleneck", color = AccentCritical, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text(zyrenPopupData!!.problem, color = theme.textMain, fontSize = 14.sp)
-                            }
-
-                            Column(modifier = Modifier.fillMaxWidth().background(AccentSuccess.copy(0.1f), RoundedCornerShape(8.dp)).padding(12.dp)) {
-                                Text("AI Suggested Solution", color = AccentSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text(zyrenPopupData!!.suggestion, color = theme.textMain, fontSize = 14.sp)
-                            }
-
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                Text("Acknowledge", color = BrandOffWhite, fontSize = 12.sp, modifier = Modifier.background(AccentAI, RoundedCornerShape(8.dp)).clickable { zyrenPopupData = null }.padding(horizontal = 16.dp, vertical = 8.dp))
-                            }
-                        }
-                    }
-                }
-            }
+        ayamPopupData?.let { data ->
+            AyamAiDialog(data, theme) { ayamPopupData = null }
         }
 
-        if (popupAlertToView != null) {
-            Dialog(onDismissRequest = { popupAlertToView = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    CleanPanel(theme = theme, modifier = Modifier.width(420.dp)) {
-                        Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Rounded.WarningAmber, null, tint = AccentCritical, modifier = Modifier.size(28.dp))
-                                    Column { Text("SYSTEM ALERT", color = AccentCritical, fontSize = 12.sp, fontWeight = FontWeight.Bold); Text(popupAlertToView!!.stage, color = theme.textMain, fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-                                }
-                                IconButton(onClick = { popupAlertToView = null }) { Icon(Icons.Rounded.Close, null, tint = theme.textMuted) }
-                            }
-                            Text(popupAlertToView!!.message, color = theme.textMain, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                            Text(popupAlertToView!!.details, color = theme.textMuted, fontSize = 14.sp)
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                                Text("Acknowledge", color = BrandOffWhite, fontSize = 12.sp, modifier = Modifier.background(AccentCritical, RoundedCornerShape(8.dp)).clickable { popupAlertToView = null }.padding(horizontal = 16.dp, vertical = 8.dp))
-                            }
-                        }
-                    }
-                }
-            }
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp)
+        ) {
+            AyamAssistantFab(
+                modifier = Modifier.size(72.dp),
+                mood = ayamMood,
+                onClick = { isAyamAssistOpen = !isAyamAssistOpen }
+            )
+
+            AyamHelloBubble(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = (-8).dp, y = (-40).dp),
+                theme = theme,
+                mood = ayamMood,
+                onSpeakNow = { }
+            )
         }
 
-        Box(modifier = Modifier.fillMaxSize().padding(top = 32.dp).zIndex(20f), contentAlignment = Alignment.TopCenter) {
-            AnimatedVisibility(visible = toastAlert != null, enter = slideInVertically(initialOffsetY = { -it - 50 }) + fadeIn(tween(400)), exit = slideOutVertically(targetOffsetY = { -it - 50 }) + fadeOut(tween(400))) {
-                toastAlert?.let { alert ->
-                    val pColor = when (alert.priority) { "CRITICAL" -> AccentCritical; "WARNING" -> AccentWarning; else -> AccentPrimary }
-                    Row(modifier = Modifier.width(320.dp).shadow(20.dp, RoundedCornerShape(24.dp)).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(colors = listOf(BrandOffWhite, BrandLightGray))).border(1.5.dp, BrandOffWhite, RoundedCornerShape(24.dp)).padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(modifier = Modifier.size(42.dp).background(pColor.copy(alpha = 0.15f), CircleShape), contentAlignment = Alignment.Center) { Icon(imageVector = if(alert.priority == "INFO") Icons.Rounded.CheckCircle else Icons.Rounded.WarningAmber, contentDescription = null, tint = pColor, modifier = Modifier.size(24.dp)) }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(text = alert.message, color = BrandDeepNavy, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(text = "${alert.stage} - ${alert.metricFailed}", color = BrandDarkBlueGray, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
+        if (isAyamAssistOpen) {
+            AyamAssistantPopup(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp),
+                theme = theme,
+                activeAlerts = activeAlerts,
+                suggestions = activeAiLogs,
+                onNavigateToScreen = onNavigateToScreen,
+                onClose = { isAyamAssistOpen = false }
+            )
         }
 
         RadialAppBar(
-            modifier = Modifier.align(Alignment.CenterStart).offset(x = (-8).dp).zIndex(30f),
-            activeSection = "HOME",
-            onActionSelected = { action ->
-                when (action) {
-                    "home" -> { onNavigateToScreen("workflow_dashboard") }
-                    "data_entry" -> { onNavigateToScreen("login_screen") }
-                    "settings" -> { onNavigateToScreen("settings_screen") }
-                    "about_us" -> { onNavigateToScreen("about_us_screen") }
-                }
-            }
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .zIndex(30f),
+            activeSection = "workflow_dashboard",
+            onActionSelected = { onNavigateToScreen(it) }
         )
     }
 }
 
-// ============================================================================
-// 💎 PREMIUM LIQUID GREY FROST GLASS-NEUMORPHISM COMPONENT
-// ============================================================================
 @Composable
-fun CleanPanel(theme: DashboardTheme, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
-    val shape = RoundedCornerShape(28.dp)
+fun GraphPanel(
+    modifier: Modifier,
+    theme: DashboardTheme,
+    displayStages: List<LiveStageData>,
+    selectedStageId: String?,
+    onStageSelected: (String?) -> Unit,
+    heatmapTick: Int,
+    isPortrait: Boolean,
+    alertSummary: Map<String, StageAlertSummary> = emptyMap()
+) {
+    val flowPath = remember { Path() }
+    val tempPath = remember { Path() }
 
-    // Liquid Grey Frost Gradient
-    val bgColors = if (theme.isDark) {
-        listOf(BrandDarkBlueGray.copy(alpha = 0.45f), BrandSteelGray.copy(alpha = 0.15f))
-    } else {
-        // Elegant light grey frosting that lets background bleed through
-        listOf(BrandOffWhite.copy(alpha = 0.85f), BrandLightGray.copy(alpha = 0.35f))
+    CleanPanel(theme, modifier = modifier) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(10.dp)
+        ) {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1.8f)
+                    .padding(bottom = 8.dp)
+            ) {
+                val canvasWidth = maxWidth
+                val canvasHeight = maxHeight - 10.dp
+                val stagesForLine =
+                    if (displayStages.isNotEmpty()) displayStages.dropLast(1) else emptyList()
+
+                val maxValue = stagesForLine.maxOfOrNull {
+                    maxOf(it.actualFlow, it.tempC.toFloat())
+                } ?: 100f
+                val graphMaxBound = if (maxValue > 0f) maxValue * 1.25f else 100f
+
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    if (displayStages.isEmpty()) return@Canvas
+
+                    val w = size.width
+                    val h = size.height
+                    val graphH = h - 10.dp.toPx()
+                    val colW = w / displayStages.size
+
+                    fun calcY(v: Float) =
+                        (graphH - ((v / graphMaxBound) * graphH)).coerceIn(0f, graphH)
+
+                    flowPath.reset()
+                    tempPath.reset()
+
+                    for (tick in 0..4) {
+                        val y = calcY((graphMaxBound / 4f) * tick)
+                        drawLine(
+                            color = theme.textMuted.copy(alpha = 0.12f),
+                            start = Offset(0f, y),
+                            end = Offset(w, y),
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
+                        )
+                    }
+
+                    displayStages.forEachIndexed { i, stage ->
+                        val colLeft = i * colW
+                        drawRect(
+                            color = stage.color.copy(alpha = if (theme.isDark) 0.12f else 0.07f),
+                            topLeft = Offset(colLeft, 0f),
+                            size = Size(colW, graphH)
+                        )
+                        if (i > 0) {
+                            drawLine(
+                                color = theme.textMuted.copy(alpha = 0.3f),
+                                start = Offset(colLeft, 0f),
+                                end = Offset(colLeft, graphH),
+                                strokeWidth = 1.dp.toPx()
+                            )
+                        }
+                    }
+
+                    fun Path.buildSmooth(values: List<Float>) {
+                        if (values.size < 2) return
+                        values.forEachIndexed { index, value ->
+                            if (index >= stagesForLine.size) return@forEachIndexed
+                            val x = (index * colW) + (colW / 2f)
+                            val y = calcY(value)
+                            if (index == 0) moveTo(x, y)
+                            else {
+                                val prevX = ((index - 1) * colW) + (colW / 2f)
+                                val prevY = calcY(values[index - 1])
+                                val midX = (prevX + x) / 2f
+                                cubicTo(midX, prevY, midX, y, x, y)
+                            }
+                        }
+                    }
+
+                    val flowValues = stagesForLine.map { it.actualFlow }
+                    val tempValues = stagesForLine.map { it.tempC.toFloat() }
+
+                    flowPath.buildSmooth(flowValues)
+                    tempPath.buildSmooth(tempValues)
+
+                    drawPath(
+                        path = flowPath,
+                        color = AccentPrimary.copy(alpha = 0.18f),
+                        style = Stroke(width = 6.dp.toPx())
+                    )
+                    drawPath(
+                        path = tempPath,
+                        color = AccentWarning.copy(alpha = 0.15f),
+                        style = Stroke(width = 6.dp.toPx())
+                    )
+                    drawPath(
+                        path = tempPath,
+                        color = AccentWarning,
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                    drawPath(
+                        path = flowPath,
+                        color = AccentPrimary,
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+
+                    displayStages.forEachIndexed { i, stage ->
+                        val nx = (i * colW) + (colW / 2f)
+                        if (i < stagesForLine.size) {
+                            val flowY = calcY(stage.actualFlow)
+                            val tempY = calcY(stage.tempC.toFloat())
+
+                            val summary = alertSummary[stage.name.uppercase()]
+                            val hasAlert = (summary?.critical ?: 0) > 0 || (summary?.warning ?: 0) > 0
+
+                            if (hasAlert) {
+                                drawCircle(
+                                    color = AccentCritical.copy(alpha = 0.35f),
+                                    radius = 9.dp.toPx(),
+                                    center = Offset(nx, flowY)
+                                )
+                            }
+
+                            drawCircle(BrandOffWhite, 6.dp.toPx(), Offset(nx, tempY))
+                            drawCircle(AccentWarning, 4.dp.toPx(), Offset(nx, tempY))
+                            drawCircle(BrandOffWhite, 7.dp.toPx(), Offset(nx, flowY))
+                            drawCircle(AccentPrimary, 5.dp.toPx(), Offset(nx, flowY))
+                        } else {
+                            drawBatchGrid(stage, colW, i, h - 10.dp.toPx(), heatmapTick, theme, isPortrait)
+                        }
+                    }
+                }
+
+                if (stagesForLine.isNotEmpty()) {
+                    val colWdp = canvasWidth / displayStages.size
+                    val maxValue = stagesForLine.maxOfOrNull {
+                        maxOf(it.actualFlow, it.tempC.toFloat())
+                    } ?: 100f
+                    val graphMaxBound = if (maxValue > 0f) maxValue * 1.25f else 100f
+
+                    stagesForLine.forEachIndexed { i, stage ->
+                        val nx = (colWdp * i) + (colWdp / 2)
+                        val actualV = stage.actualFlow
+                        val ay = canvasHeight.value - ((actualV / graphMaxBound) * canvasHeight.value)
+                        val summary = alertSummary[stage.name.uppercase()]
+
+                        Box(
+                            modifier = Modifier
+                                .offset(x = nx - 70.dp, y = ay.dp - 64.dp)
+                                .width(140.dp)
+                                .clickable {
+                                    onStageSelected(if (selectedStageId == stage.id) null else stage.id)
+                                }
+                        ) {
+                            StageFlowGlassBox(
+                                stage = stage,
+                                flowValue = actualV,
+                                summary = summary,
+                                theme = theme
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                displayStages.forEach { stage ->
+                    val isSelected = selectedStageId == stage.id
+                    Text(
+                        text = stage.name,
+                        color = if (isSelected) stage.color else theme.textMuted,
+                        fontSize = 10.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onStageSelected(if (isSelected) null else stage.id) }
+                            .padding(vertical = 2.dp),
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            ) {
+                displayStages.forEach { stage ->
+                    val isSelected = selectedStageId == stage.id
+                    val cardDisplay = stageCardDisplay(stage)
+
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxHeight().padding(horizontal = 3.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    if (isSelected) stage.color.copy(alpha = 0.18f)
+                                    else theme.trackBg.copy(alpha = 0.3f)
+                                )
+                                .border(
+                                    if (isSelected) 2.dp else 1.dp,
+                                    if (isSelected) stage.color else BrandLightGray.copy(alpha = 0.2f),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .clickable {
+                                    onStageSelected(if (selectedStageId == stage.id) null else stage.id)
+                                }
+                        ) {
+                            val tankPct = stage.tankFillPercent.coerceIn(0, 100)
+                            val fillHeight = (tankPct / 100f).coerceIn(0f, 1f)
+                            val baseColor = stage.color
+                            val barColor = if (tankPct >= 90) AccentCritical else baseColor
+
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(vertical = 4.dp)
+                                    .width(5.dp)
+                                    .fillMaxHeight(fillHeight)
+                                    .clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp))
+                                    .background(barColor)
+                            )
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(start = 6.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = cardDisplay.primaryValue,
+                                        color = theme.textMain,
+                                        fontSize = if (isPortrait) 14.sp else 20.sp,
+                                        fontWeight = FontWeight.Black,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = TextStyle(
+                                            shadow = Shadow(
+                                                color = BrandDeepNavy.copy(alpha = 0.1f),
+                                                offset = Offset(0f, 2f),
+                                                blurRadius = 4f
+                                            )
+                                        )
+                                    )
+                                    Text(
+                                        text = cardDisplay.primaryLabel,
+                                        color = stage.color,
+                                        fontSize = 7.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                val statStyle = TextStyle(
+                                    shadow = Shadow(
+                                        color = BrandDeepNavy.copy(alpha = 0.1f),
+                                        blurRadius = 2f
+                                    )
+                                )
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("${cardDisplay.stat1Label}: ${cardDisplay.stat1Value}", color = theme.textLightMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, style = statStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${cardDisplay.stat2Label}: ${cardDisplay.stat2Value}", color = theme.textLightMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, style = statStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("${cardDisplay.stat3Label}: ${cardDisplay.stat3Value}", color = theme.textLightMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, style = statStyle, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBatchGrid(
+    stage: LiveStageData,
+    colW: Float,
+    i: Int,
+    graphH: Float,
+    heatmapTick: Int,
+    theme: DashboardTheme,
+    isPortrait: Boolean
+) {
+    val colLeft = i * colW
+    val scaleDown = if (isPortrait) 0.7f else 1f
+    val cellW = (34.dp * scaleDown).toPx()
+    val cellH = (22.dp * scaleDown).toPx()
+    val spacing = (8.dp * scaleDown).toPx()
+    val batchBoxW = (28.dp * scaleDown).toPx()
+    val batchSpc = (16.dp * scaleDown).toPx()
+    val rows = 4
+    val cols = 2
+    val totalGridW = (cols * cellW) + ((cols - 1) * spacing) + batchSpc + batchBoxW
+    val totalGridH = (rows * cellH) + ((rows - 1) * spacing)
+    val gridStartX = colLeft + (colW - totalGridW) / 2
+    val batchStartX = gridStartX + (cols * cellW) + ((cols - 1) * spacing) + batchSpc
+    val startY = (graphH - totalGridH) / 2 + 10.dp.toPx()
+
+    val hdrPaint = Paint().apply {
+        color = stage.color.toArgb()
+        textSize = (9.sp * scaleDown).toPx()
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val tp = Paint().apply {
+        color = BrandOffWhite.toArgb()
+        textSize = (11.sp * scaleDown).toPx()
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val bpActive = Paint().apply {
+        color = stage.color.toArgb()
+        textSize = (13.sp * scaleDown).toPx()
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val bpInactive = Paint().apply {
+        color = theme.textMuted.toArgb()
+        textSize = (13.sp * scaleDown).toPx()
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
     }
 
-    // Reflective edge highlight for glass feel
-    val borderColors = if (theme.isDark) {
-        listOf(BrandLightGray.copy(alpha = 0.3f), Color.Transparent)
-    } else {
-        // Crisp white rim fading into faint grey
-        listOf(Color.White, BrandLightGray.copy(alpha = 0.4f))
+    drawContext.canvas.nativeCanvas.apply {
+        drawText("PAN", gridStartX + cellW / 2, startY - 10.dp.toPx(), hdrPaint)
+        drawText("PWDR", gridStartX + cellW + spacing + cellW / 2, startY - 10.dp.toPx(), hdrPaint)
+        drawText("BATCH", batchStartX + batchBoxW / 2, startY - 10.dp.toPx(), hdrPaint)
     }
 
-    // Soft, diffuse drop shadow
-    val shadowColor = if (theme.isDark) Color.Black else BrandDeepNavy.copy(alpha = 0.08f)
+    val emptyColor =
+        if (theme.isDark) BrandDarkBlueGray.copy(alpha = 0.4f)
+        else BrandLightGray.copy(alpha = 0.5f)
+    val activeColor = stage.color
+
+    for (r in 0 until rows) {
+        val cy = startY + r * (cellH + spacing)
+        val currentBatchTime = (heatmapTick + r * 7) % 25
+        val isActive = currentBatchTime < 21
+
+        for (c in 0 until cols) {
+            val cx = gridStartX + c * (cellW + spacing)
+            val cellActive = when {
+                !isActive -> false
+                c == 0 -> currentBatchTime < 12
+                else -> currentBatchTime >= 12
+            }
+            if (cellActive) {
+                drawRoundRect(
+                    color = activeColor.copy(alpha = 0.35f),
+                    topLeft = Offset(cx - 2.dp.toPx(), cy - 2.dp.toPx()),
+                    size = Size(cellW + 4.dp.toPx(), cellH + 4.dp.toPx()),
+                    cornerRadius = CornerRadius(6.dp.toPx())
+                )
+            }
+            drawRoundRect(
+                color = if (cellActive) activeColor else emptyColor.copy(alpha = 0.2f),
+                topLeft = Offset(cx, cy),
+                size = Size(cellW, cellH),
+                cornerRadius = CornerRadius(4.dp.toPx())
+            )
+            if (cellActive) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    "${currentBatchTime + 1}m",
+                    cx + cellW / 2,
+                    cy + cellH / 2 - (tp.ascent() + tp.descent()) / 2,
+                    tp
+                )
+            }
+        }
+
+        drawRoundRect(
+            color = if (isActive) activeColor.copy(alpha = 0.15f) else emptyColor.copy(alpha = 0.1f),
+            topLeft = Offset(batchStartX, cy),
+            size = Size(batchBoxW, cellH),
+            cornerRadius = CornerRadius(6.dp.toPx())
+        )
+        val currentBp = if (isActive) bpActive else bpInactive
+        drawContext.canvas.nativeCanvas.drawText(
+            "#${r + 1}",
+            batchStartX + batchBoxW / 2,
+            cy + cellH / 2 - (currentBp.ascent() + currentBp.descent()) / 2,
+            currentBp
+        )
+    }
+}
+
+@Composable
+fun StageFlowGlassBox(
+    stage: LiveStageData,
+    flowValue: Float,
+    summary: StageAlertSummary?,
+    theme: DashboardTheme
+) {
+    val critical = summary?.critical ?: 0
+    val warning = summary?.warning ?: 0
+
+    val (statusText, statusColor) = when {
+        critical > 0 -> "CRITICAL" to AccentCritical
+        warning > 0 -> "WARNING" to AccentWarning
+        else -> "OK" to AccentSuccess
+    }
+
+    val alertsText = when {
+        critical > 0 && warning > 0 -> "$critical CRIT · $warning WARN"
+        critical > 0 -> "$critical CRIT"
+        warning > 0 -> "$warning WARN"
+        else -> "No active alerts"
+    }
+
+    val cardShape = RoundedCornerShape(14.dp)
+
+    Box(modifier = Modifier.wrapContentSize()) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .shadow(
+                        elevation = 10.dp,
+                        shape = cardShape,
+                        spotColor = Color.Black.copy(alpha = 0.12f),
+                        ambientColor = Color.Black.copy(alpha = 0.06f)
+                    )
+                    .clip(cardShape)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(Color.White.copy(alpha = 0.88f), Color.White.copy(alpha = 0.55f))
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        Brush.linearGradient(
+                            listOf(Color.White.copy(alpha = 0.95f), Color.White.copy(alpha = 0.35f))
+                        ),
+                        cardShape
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = stage.name.uppercase(),
+                        color = stage.color,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = String.format("%,.0f", flowValue),
+                        color = BrandDeepNavy,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        text = "$statusText · $alertsText",
+                        color = statusColor.copy(alpha = 0.85f),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .offset(y = (-2).dp)
+                    .size(7.dp)
+                    .clip(CircleShape)
+                    .background(AccentPrimary)
+            )
+        }
+    }
+}
+
+@Composable
+fun ProjectedKpiPanel(
+    modifier: Modifier,
+    theme: DashboardTheme,
+    displayStages: List<LiveStageData>,
+    activeStage: LiveStageData?
+) {
+    val displayProjection =
+        activeStage?.aiProjection
+            ?: if (displayStages.isNotEmpty()) displayStages.map { it.aiProjection }.average().toFloat()
+            else 0f
+
+    val animProjection by animateFloatAsState(displayProjection, tween(800), label = "proj")
+
+    CleanPanel(theme, modifier = modifier) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp)
+        ) {
+            Text(
+                if (activeStage != null) "${activeStage.name} AI PROJ." else "GLOBAL AI PROJ.",
+                color = theme.textMuted,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    String.format("%,d", animProjection.toInt()),
+                    color = AccentAI,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "TCD",
+                    color = theme.textMuted,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(bottom = 5.dp)
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "AI forecast for next 4 hours.",
+                color = theme.textLightMuted,
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun EnergyPanel(
+    modifier: Modifier,
+    theme: DashboardTheme,
+    activeStage: LiveStageData?,
+    globalEnergy: Float,
+    globalThroughput: Float,
+    energyHistory: List<Float>,
+    throughputHistory: List<Float>
+) {
+    val displayEnergy = activeStage?.energyKw ?: globalEnergy
+    val displayThroughput = activeStage?.actualFlow ?: globalThroughput
+
+    val animEnergy by animateFloatAsState(displayEnergy, tween(800), label = "energy")
+    val animThroughput by animateFloatAsState(displayThroughput, tween(800), label = "throughput")
+    val cardShape = RoundedCornerShape(18.dp)
+
+    CleanPanel(theme, modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ThroughputCard(
+                modifier = Modifier.weight(1f),
+                value = animThroughput,
+                unit = if (activeStage != null) "kg/hr" else "TCD",
+                history = throughputHistory,
+                cardShape = cardShape
+            )
+            EnergyCard(
+                modifier = Modifier.weight(1f),
+                value = animEnergy,
+                history = energyHistory,
+                cardShape = cardShape
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThroughputCard(
+    modifier: Modifier,
+    value: Float,
+    unit: String,
+    history: List<Float>,
+    cardShape: RoundedCornerShape
+) {
+    Column(
+        modifier = modifier
+            .clip(cardShape)
+            .background(
+                Brush.linearGradient(
+                    listOf(AccentPrimary.copy(alpha = 0.18f), AccentPrimary.copy(alpha = 0.08f))
+                )
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                modifier = Modifier.size(20.dp).background(AccentPrimary.copy(alpha = 0.22f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Schedule, null, tint = AccentPrimary, modifier = Modifier.size(12.dp))
+            }
+            Text("Throughput", color = BrandDeepNavy, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = String.format("%,d", value.toInt()),
+                color = BrandDeepNavy,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = unit,
+                color = BrandMutedBlue,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+        }
+
+        Text("Production rate", color = BrandSteelGray, fontSize = 10.sp)
+
+        ThroughputDotRow(
+            history = history,
+            dotColor = AccentPrimary,
+            modifier = Modifier.fillMaxWidth().height(22.dp)
+        )
+    }
+}
+
+@Composable
+private fun ThroughputDotRow(
+    history: List<Float>,
+    dotColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val animatedProgress by animateFloatAsState(1f, tween(700), label = "dotRow")
+
+    Canvas(modifier = modifier) {
+        if (history.isEmpty()) return@Canvas
+
+        val maxV = history.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+        val dotCount = history.size
+        val baseDiameter = 6.dp.toPx()
+        val totalDotsWidth = dotCount * baseDiameter
+        val spacing = (size.width - totalDotsWidth) / (dotCount - 1).coerceAtLeast(1)
+
+        history.forEachIndexed { index, v ->
+            val frac = (v / maxV).coerceIn(0.15f, 1f)
+            val radius = (baseDiameter / 2f) * frac * animatedProgress
+            val x = index * (baseDiameter + spacing) + baseDiameter / 2f
+            val y = size.height - radius - 1.dp.toPx()
+
+            drawCircle(dotColor.copy(alpha = 0.18f), radius * 1.6f, Offset(x, y))
+            drawCircle(dotColor.copy(alpha = 0.55f + 0.45f * frac), radius, Offset(x, y))
+        }
+    }
+}
+
+@Composable
+private fun EnergyCard(
+    modifier: Modifier,
+    value: Float,
+    history: List<Float>,
+    cardShape: RoundedCornerShape
+) {
+    val avgEnergy = history.takeIf { it.isNotEmpty() }?.average()?.toFloat() ?: value
+    val diff = value - avgEnergy
+    val pct = if (avgEnergy != 0f) diff / avgEnergy * 100f else 0f
+    val isUp = pct >= 0f
+
+    Column(
+        modifier = modifier
+            .clip(cardShape)
+            .background(
+                Brush.linearGradient(
+                    listOf(AccentWarning.copy(alpha = 0.16f), AccentWarning.copy(alpha = 0.05f))
+                )
+            )
+            .padding(12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                modifier = Modifier.size(20.dp).background(AccentWarning.copy(alpha = 0.22f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.ElectricBolt, null, tint = AccentWarning, modifier = Modifier.size(12.dp))
+            }
+            Text("Energy Consumption", color = BrandDeepNavy, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f).height(76.dp), contentAlignment = Alignment.Center) {
+                EnergyGauge(value = value, min = 0f, max = 60f, arcColor = AccentWarning)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(value.toInt().toString(), color = BrandDeepNavy, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("kW", color = BrandSteelGray, fontSize = 9.sp)
+                }
+            }
+
+            Spacer(Modifier.width(6.dp))
+
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text("Current usage", color = BrandSteelGray, fontSize = 9.sp)
+                Text("${value.toInt()} kW", color = BrandDeepNavy, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                val diffColor = if (isUp) AccentCritical else AccentSuccess
+                Text(
+                    text = "${if (isUp) "↑" else "↓"} ${kotlin.math.abs(pct).toInt()}% vs avg",
+                    color = diffColor,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EnergyGauge(
+    value: Float,
+    min: Float,
+    max: Float,
+    arcColor: Color
+) {
+    val clamped = value.coerceIn(min, max)
+    val normalized = if (max - min == 0f) 0f else (clamped - min) / (max - min)
+    val animatedNorm by animateFloatAsState(normalized, tween(700), label = "energyGauge")
+
+    Canvas(
+        modifier = Modifier.fillMaxWidth().height(76.dp)
+    ) {
+        val strokeWidth = 9.dp.toPx()
+        val padding = strokeWidth / 2 + 4.dp.toPx()
+
+        val arcWidth = size.width - 2 * padding
+        val arcHeight = size.height * 1.5f - 2 * padding
+
+        val topLeft = Offset(padding, padding)
+        val arcSize = Size(arcWidth, arcHeight)
+
+        val startAngle = 180f
+        val fullSweep = 180f
+        val sweep = fullSweep * animatedNorm
+
+        drawArc(
+            color = BrandSteelGray.copy(alpha = 0.25f),
+            startAngle = startAngle,
+            sweepAngle = fullSweep,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+
+        drawArc(
+            brush = Brush.linearGradient(
+                colors = listOf(AccentSuccess, arcColor, AccentCritical),
+                start = Offset(topLeft.x, topLeft.y + arcSize.height),
+                end = Offset(topLeft.x + arcSize.width, topLeft.y)
+            ),
+            startAngle = startAngle,
+            sweepAngle = sweep,
+            useCenter = false,
+            topLeft = topLeft,
+            size = arcSize,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+
+        val centerX = topLeft.x + arcSize.width / 2f
+        val centerY = topLeft.y + arcSize.height / 2f
+        val radius = arcSize.width / 2f
+        val angleDeg = startAngle + sweep
+        val angleRad = angleDeg * (PI.toFloat() / 180f)
+        val pointerX = centerX + radius * cos(angleRad.toDouble()).toFloat()
+        val pointerY = centerY + radius * sin(angleRad.toDouble()).toFloat()
+
+        drawCircle(Color.White, strokeWidth * 0.75f, Offset(pointerX, pointerY))
+    }
+}
+
+@Composable
+fun SuggestionsPanel(
+    modifier: Modifier,
+    theme: DashboardTheme,
+    activeStage: LiveStageData?,
+    suggestions: List<RecommendationData>,
+    onSuggestionClick: (RecommendationData) -> Unit
+) {
+    val stageSuggestions = remember(activeStage, suggestions) {
+        val base = if (activeStage != null) {
+            suggestions.filter { it.stage.equals(activeStage.name, ignoreCase = true) }
+        } else suggestions
+        base.take(6)
+    }
+
+    CleanPanel(theme, modifier = modifier) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = if (activeStage != null) "${activeStage.name} Suggestions" else "System Suggestions",
+                        color = theme.textMain,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text("Insights from Ayam AI", color = theme.textLightMuted, fontSize = 10.sp)
+                }
+                Icon(Icons.Outlined.Memory, null, tint = AccentAI, modifier = Modifier.size(18.dp))
+            }
+
+            if (stageSuggestions.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(top = 8.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text("No active recommendations at this time.", color = theme.textLightMuted, fontSize = 11.sp)
+                }
+            } else {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    stageSuggestions.forEach { rec ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(theme.trackBg.copy(alpha = 0.3f))
+                                .border(1.dp, theme.textMuted.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                                .clickable { onSuggestionClick(rec) }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = rec.stage,
+                                    color = theme.textMain,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                val pColor = when (rec.priority.lowercase()) {
+                                    "critical", "high" -> AccentCritical
+                                    else -> AccentWarning
+                                }
+                                Text(rec.priority, color = pColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(Modifier.height(2.dp))
+                            Text(rec.issue, color = theme.textMain, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.height(2.dp))
+                            Text(rec.action, color = AccentAI, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlertsPanel(
+    modifier: Modifier,
+    theme: DashboardTheme,
+    activeAlerts: List<AlertData>,
+    onNavigateToScreen: (String) -> Unit
+) {
+    CleanPanel(theme, modifier = modifier) {
+        Column(
+            Modifier.fillMaxSize().padding(12.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text("Active Alerts Log", color = theme.textMain, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                    Text("Synced via Digital Twin API", color = theme.textLightMuted, fontSize = 10.sp)
+                }
+                Text("${activeAlerts.count { !it.acknowledged }} Active", color = AccentCritical, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(10.dp))
+            if (activeAlerts.isEmpty()) {
+                Text("System clear. No active bottlenecks.", color = theme.textMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 20.dp))
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(activeAlerts, key = { it.id }) { alert ->
+                        val isAck = alert.acknowledged
+                        val color = if (isAck) BrandSteelGray else when (alert.priority.uppercase()) {
+                            "CRITICAL" -> AccentCritical
+                            "WARNING" -> AccentWarning
+                            else -> AccentPrimary
+                        }
+                        val canNavigate =
+                            alert.sourceRoute == "energy_tab" || alert.sourceRoute == "production_tab"
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (isAck) Color.Transparent else theme.trackBg.copy(alpha = 0.2f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .border(
+                                    1.dp,
+                                    color.copy(alpha = if (isAck) 0.1f else 0.3f),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable(enabled = canNavigate) {
+                                    val section = alert.targetSection ?: alert.stage
+                                    val alertId = alert.targetAlertId ?: alert.id
+                                    val route = when (alert.sourceRoute) {
+                                        "energy_tab" -> "${AppDestinations.ENERGY_TAB}?section=$section&alertId=$alertId"
+                                        "production_tab" -> "${AppDestinations.PRODUCTION_TAB}?section=$section&alertId=$alertId"
+                                        else -> null
+                                    }
+                                    route?.let(onNavigateToScreen)
+                                }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (isAck) Icons.Rounded.CheckCircle else Icons.Rounded.WarningAmber,
+                                null,
+                                tint = color,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    alert.message,
+                                    color = if (isAck) theme.textMuted else theme.textMain,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text("${alert.stage} • ${alert.priority}", color = color, fontSize = 10.sp)
+                            }
+                            if (isAck) {
+                                Text("ACKNOWLEDGED", color = BrandSteelGray, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AyamAiDialog(
+    ayamPopupData: RecommendationData,
+    theme: DashboardTheme,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            CleanPanel(theme = theme, modifier = Modifier.width(420.dp)) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Outlined.Memory, null, tint = AccentAI, modifier = Modifier.size(28.dp))
+                            Column {
+                                Text("Ayam AI DIAGNOSIS", color = AccentAI, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(ayamPopupData.stage, color = theme.textMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Rounded.Close, null, tint = theme.textMuted)
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AccentCritical.copy(0.1f), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text("Predicted Bottleneck", color = AccentCritical, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(ayamPopupData.issue, color = theme.textMain, fontSize = 14.sp)
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AccentSuccess.copy(0.1f), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text("AI Suggested Solution", color = AccentSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(ayamPopupData.action, color = theme.textMain, fontSize = 14.sp)
+                    }
+
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Text(
+                            "Acknowledge",
+                            color = BrandOffWhite,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .background(AccentAI, RoundedCornerShape(8.dp))
+                                .clickable { onDismiss() }
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AyamAssistantFab(
+    modifier: Modifier = Modifier,
+    mood: AyamMood,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .clickable { onClick() }
+    ) {
+        // Glassmorphic background
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(CircleShape)
+                .background(
+                    brush = Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.35f),
+                            BrandLightGray.copy(alpha = 0.20f)
+                        )
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.95f),
+                            BrandLightGray.copy(alpha = 0.45f)
+                        )
+                    ),
+                    shape = CircleShape
+                )
+                .shadow(
+                    elevation = 10.dp,
+                    shape = CircleShape,
+                    spotColor = Color.Black.copy(alpha = 0.16f),
+                    ambientColor = Color.Black.copy(alpha = 0.08f)
+                )
+        )
+
+        // Video avatar on top, inside the glass circle
+        AyamVideoAvatar(
+            modifier = Modifier
+                .matchParentSize()
+                .clip(CircleShape),
+            videoResId = ayamVideoForMood(mood)
+        )
+    }
+}
+@Composable
+fun AyamHelloBubble(
+    modifier: Modifier = Modifier,
+    theme: DashboardTheme,
+    mood: AyamMood,
+    onSpeakNow: (String) -> Unit = {}
+) {
+    val shape = RoundedCornerShape(18.dp)
+
+    val (mainText, accentColor) = when (mood) {
+        AyamMood.NORMAL -> "Hello, I'm Ayam" to AccentPrimary
+        AyamMood.WARNING -> "I'm concerned" to AccentWarning
+        AyamMood.CRITICAL -> "I'm concerned" to AccentCritical
+    }
+
+    val subText = "Use Google Speak now"
+
+    val scale by animateFloatAsState(
+        targetValue = if (mood == AyamMood.NORMAL) 1f else 1.05f,
+        animationSpec = tween(350),
+        label = "ayamHelloScale"
+    )
+
+    Box(
+        modifier = modifier
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .shadow(
+                elevation = 10.dp,
+                shape = shape,
+                spotColor = Color.Black.copy(alpha = 0.16f),
+                ambientColor = Color.Black.copy(alpha = 0.08f)
+            )
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    listOf(Color.White.copy(alpha = 0.94f), Color.White.copy(alpha = 0.70f))
+                )
+            )
+            .border(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(Color.White.copy(alpha = 0.95f), accentColor.copy(alpha = 0.45f))
+                ),
+                shape
+            )
+            .clickable { onSpeakNow("$mainText. $subText") }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Column {
+            Text(mainText, color = BrandDeepNavy, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(subText, color = accentColor, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+fun AyamAssistantPopup(
+    modifier: Modifier = Modifier,
+    theme: DashboardTheme,
+    activeAlerts: List<AlertData>,
+    suggestions: List<RecommendationData>,
+    onNavigateToScreen: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    val frequentStages = remember(activeAlerts) {
+        activeAlerts.groupBy { it.stage }.filter { (_, alerts) -> alerts.size >= 2 }.keys
+    }
+
+    val topSuggestions = remember(suggestions) { suggestions.take(5) }
+
+    val hasCritical = activeAlerts.any {
+        !it.acknowledged && it.priority.equals("CRITICAL", ignoreCase = true)
+    }
+    val hasWarning = activeAlerts.any {
+        !it.acknowledged && it.priority.equals("WARNING", ignoreCase = true)
+    }
+
+    val expressionTitle: String
+    val expressionText: String
+    val expressionColor: Color
+    val popupMood: AyamMood
+
+    when {
+        hasCritical -> {
+            expressionTitle = "Concerned"
+            expressionText = "I’m seeing critical issues that need immediate attention."
+            expressionColor = AccentCritical
+            popupMood = AyamMood.CRITICAL
+        }
+        hasWarning -> {
+            expressionTitle = "Alert"
+            expressionText = "There are some warnings you may want to check."
+            expressionColor = AccentWarning
+            popupMood = AyamMood.WARNING
+        }
+        else -> {
+            expressionTitle = "Calm"
+            expressionText = "System looks stable. No major issues right now."
+            expressionColor = AccentSuccess
+            popupMood = AyamMood.NORMAL
+        }
+    }
+
+    var recognizedText by remember { mutableStateOf<String?>(null) }
+    var ayamReply by remember { mutableStateOf<String?>(null) }
+
+    fun fakeVoiceInteraction() {
+        recognizedText = "User: Help me reduce energy in evaporation."
+        ayamReply = "Ayam: Check steam pressure and vacuum in Evaporation. Try reducing steam flow by 5%."
+    }
+
+    Box(modifier = modifier) {
+        CleanPanel(
+            theme = theme,
+            cornerRadius = 24.dp,
+            modifier = Modifier.padding(start = 36.dp).widthIn(max = 420.dp)
+        ) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .blur(18.dp)
+                        .background(Color.White.copy(alpha = 0.72f))
+                )
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Ayam Assistant", color = theme.textMain, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text(expressionTitle, color = expressionColor, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
+                        IconButton(onClick = onClose) {
+                            Icon(Icons.Rounded.Close, null, tint = theme.textMuted)
+                        }
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(expressionColor.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text("Expression", color = expressionColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(2.dp))
+                        Text(expressionText, color = theme.textMain, fontSize = 10.sp)
+                    }
+
+                    if (frequentStages.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Repeated alerts", color = AccentCritical, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        frequentStages.forEach { st ->
+                            Text(
+                                "• $st – tap to drill into Energy view",
+                                color = theme.textMain,
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .clickable { onNavigateToScreen("${AppDestinations.ENERGY_TAB}?section=$st") }
+                                    .padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    if (topSuggestions.isNotEmpty()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Suggestions", color = AccentAI, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            topSuggestions.forEach { rec ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(theme.trackBg.copy(alpha = 0.3f))
+                                        .border(1.dp, theme.textMuted.copy(alpha = 0.25f), RoundedCornerShape(8.dp))
+                                        .clickable { onNavigateToScreen(AppDestinations.WORKFLOW_DASHBOARD) }
+                                        .padding(8.dp)
+                                ) {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            rec.stage,
+                                            color = theme.textMain,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        val pColor = when (rec.priority.lowercase()) {
+                                            "critical", "high" -> AccentCritical
+                                            else -> AccentWarning
+                                        }
+                                        Text(rec.priority, color = pColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(rec.issue, color = theme.textMain, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(rec.action, color = AccentAI, fontSize = 9.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(AccentPrimary.copy(alpha = 0.15f))
+                                .clickable { fakeVoiceInteraction() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Outlined.Mic, "Speak to Ayam", tint = AccentPrimary, modifier = Modifier.size(18.dp))
+                        }
+                        Column {
+                            Text("Speak to Ayam (voice + translate)", color = theme.textMuted, fontSize = 10.sp)
+                            Text("TODO: hook Google Speech‑to‑Text, TTS & translation here.", color = theme.textLightMuted, fontSize = 9.sp)
+                        }
+                    }
+
+                    recognizedText?.let {
+                        Text(it, color = theme.textMain, fontSize = 10.sp)
+                    }
+                    ayamReply?.let {
+                        Text(it, color = AccentAI, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .size(72.dp)
+                .offset(x = (-8).dp, y = (-24).dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = 0.30f), BrandLightGray.copy(alpha = 0.18f))
+                    )
+                )
+                .border(
+                    1.dp,
+                    Brush.linearGradient(
+                        listOf(Color.White.copy(alpha = 0.90f), BrandLightGray.copy(alpha = 0.45f))
+                    ),
+                    CircleShape
+                )
+        ) {
+            AyamVideoAvatar(
+                modifier = Modifier.matchParentSize().clip(CircleShape),
+                videoResId = ayamVideoForMood(popupMood)
+            )
+        }
+    }
+}
+
+@Composable
+fun TelemetryCol(label: String, value: String, theme: DashboardTheme) {
+    Column {
+        Text(label, color = theme.textLightMuted, fontSize = 9.sp)
+        Text(value, color = theme.textMain, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun CleanPanel(
+    theme: DashboardTheme,
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 20.dp,
+    content: @Composable BoxScope.() -> Unit
+) {
+    val shape = RoundedCornerShape(cornerRadius)
+    val bgColors =
+        if (theme.isDark)
+            listOf(BrandDarkBlueGray.copy(alpha = 0.45f), BrandSteelGray.copy(alpha = 0.15f))
+        else
+            listOf(BrandOffWhite.copy(alpha = 0.85f), BrandLightGray.copy(alpha = 0.35f))
+    val borderColors =
+        if (theme.isDark)
+            listOf(BrandLightGray.copy(alpha = 0.3f), Color.Transparent)
+        else
+            listOf(Color.White, BrandLightGray.copy(alpha = 0.4f))
+    val shadowColor =
+        if (theme.isDark) Color.Black
+        else BrandDeepNavy.copy(alpha = 0.08f)
 
     Box(
         modifier = modifier
             .shadow(
-                elevation = 24.dp,
+                elevation = 20.dp,
                 shape = shape,
                 spotColor = shadowColor,
                 ambientColor = shadowColor
             )
             .clip(shape)
             .background(
-                brush = Brush.linearGradient(
-                    colors = bgColors,
-                    start = Offset(0f, 0f),
-                    end = Offset(0f, Float.POSITIVE_INFINITY)
+                Brush.linearGradient(
+                    bgColors,
+                    Offset(0f, 0f),
+                    Offset(0f, Float.POSITIVE_INFINITY)
                 )
             )
             .border(
-                width = 1.5.dp,
-                brush = Brush.linearGradient(
-                    colors = borderColors,
-                    start = Offset(0f, 0f),
-                    end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                1.5.dp,
+                Brush.linearGradient(
+                    borderColors,
+                    Offset(0f, 0f),
+                    Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
                 ),
-                shape = shape
+                shape
             ),
         content = content
     )
 }
-//package com.example.category3.auth.ui
-//
-//import androidx.compose.animation.AnimatedVisibility
-//import androidx.compose.animation.fadeIn
-//import androidx.compose.animation.fadeOut
-//import androidx.compose.animation.slideInVertically
-//import androidx.compose.animation.slideOutVertically
-//import androidx.compose.foundation.Canvas
-//import androidx.compose.foundation.background
-//import androidx.compose.foundation.border
-//import androidx.compose.foundation.layout.Arrangement
-//import androidx.compose.foundation.layout.Box
-//import androidx.compose.foundation.layout.BoxScope
-//import androidx.compose.foundation.layout.Column
-//import androidx.compose.foundation.layout.Row
-//import androidx.compose.foundation.layout.Spacer
-//import androidx.compose.foundation.layout.fillMaxHeight
-//import androidx.compose.foundation.layout.fillMaxSize
-//import androidx.compose.foundation.layout.fillMaxWidth
-//import androidx.compose.foundation.layout.height
-//import androidx.compose.foundation.layout.offset
-//import androidx.compose.foundation.layout.padding
-//import androidx.compose.foundation.layout.size
-//import androidx.compose.foundation.layout.width
-//import androidx.compose.foundation.shape.CircleShape
-//import androidx.compose.foundation.shape.RoundedCornerShape
-//import androidx.compose.material.icons.Icons
-//import androidx.compose.material.icons.filled.AttachMoney
-//import androidx.compose.material.icons.filled.AutoAwesome
-//import androidx.compose.material.icons.filled.Build
-//import androidx.compose.material.icons.filled.CheckCircle
-//import androidx.compose.material.icons.filled.Dashboard
-//import androidx.compose.material.icons.filled.Factory
-//import androidx.compose.material.icons.filled.Layers
-//import androidx.compose.material.icons.filled.LinkOff
-//import androidx.compose.material.icons.filled.MonitorHeart
-//import androidx.compose.material.icons.filled.Power
-//import androidx.compose.material.icons.filled.Search
-//import androidx.compose.material.icons.filled.Speed
-//import androidx.compose.material.icons.filled.WaterDrop
-//import androidx.compose.material.icons.outlined.Assessment
-//import androidx.compose.material.icons.outlined.Inventory
-//import androidx.compose.material.icons.outlined.Lightbulb
-//import androidx.compose.material.icons.outlined.PrecisionManufacturing
-//import androidx.compose.material.icons.outlined.Schedule
-//import androidx.compose.material.icons.outlined.Settings
-//import androidx.compose.material.icons.outlined.WarningAmber
-//import androidx.compose.material.icons.rounded.Info
-//import androidx.compose.material.icons.rounded.Warning
-//import androidx.compose.material3.Icon
-//import androidx.compose.material3.Text
-//import androidx.compose.runtime.Composable
-//import androidx.compose.runtime.LaunchedEffect
-//import androidx.compose.runtime.getValue
-//import androidx.compose.runtime.mutableStateOf
-//import androidx.compose.runtime.remember
-//import androidx.compose.runtime.setValue
-//import androidx.compose.ui.Alignment
-//import androidx.compose.ui.Modifier
-//import androidx.compose.ui.draw.clip
-//import androidx.compose.ui.draw.scale
-//import androidx.compose.ui.draw.shadow
-//import androidx.compose.ui.geometry.Offset
-//import androidx.compose.ui.geometry.Size
-//import androidx.compose.ui.graphics.Color
-//import androidx.compose.ui.graphics.Path
-//import androidx.compose.ui.graphics.PathEffect
-//import androidx.compose.ui.graphics.StrokeCap
-//import androidx.compose.ui.graphics.drawscope.Stroke
-//import androidx.compose.ui.graphics.nativeCanvas
-//import androidx.compose.ui.graphics.toArgb
-//import androidx.compose.ui.text.font.FontWeight
-//import androidx.compose.ui.text.style.TextOverflow
-//import androidx.compose.ui.unit.dp
-//import androidx.compose.ui.unit.sp
-//import androidx.compose.ui.zIndex
-//import kotlinx.coroutines.delay
-//import kotlin.random.Random
-//
-//// ============================================================================
-//// 🎨 PROFESSIONAL LIGHT SAAS THEME
-//// ============================================================================
-//val BgAppSolid = Color(0xFFF4F7FC)
-//val CardBgSolid = Color(0xFFFFFFFF)
-//val BorderLight = Color(0xFFE2E8F0)
-//
-//val TextDark = Color(0xFF0F172A)
-//val TextMuted = Color(0xFF64748B)
-//
-//val BlueBrand = Color(0xFF2563EB)
-//val BlueActual = Color(0xFF3B82F6)
-//val PurplePredict = Color(0xFF8B5CF6)
-//val GreenTarget = Color(0xFF10B981)
-//val OrangeAlert = Color(0xFFF97316)
-//val RedCritical = Color(0xFFEF4444)
-//val CyanAccent = Color(0xFF06B6D4)
-//
-//// ============================================================================
-//// 📡 DATA MODELS
-//// ============================================================================
-//data class ProcessStage(
-//    val id: String, val name: String, val efficiency: Int,
-//    val metricLabel: String, val metricValue: String, val metricUnit: String,
-//    val status: String, val isBottleneck: Boolean, val color: Color,
-//    val actualFlow: Float, val predictedFlow: Float, val targetFlow: Float
-//)
-//
-//data class AlertMessage(val title: String, val message: String, val isCritical: Boolean)
-//
-//// ============================================================================
-//// 📱 MAIN DASHBOARD SCREEN
-//// ============================================================================
-//@Composable
-//fun WorkflowDashboardScreen() {
-//
-//    var topKpis by remember { mutableStateOf(listOf("1,248", "31,250", "91.8%", "92%", "112", "2h 15m")) }
-//    var currentEnergy by remember { mutableStateOf(495) }
-//    var oee by remember { mutableStateOf(87) }
-//
-//    var stages by remember {
-//        mutableStateOf(
-//            listOf(
-//                ProcessStage("01", "MILL", 96, "Juice Flow", "13.5", "T/hr", "Running", false, BlueActual, 12.8f, 14.2f, 15.0f),
-//                ProcessStage("02", "DEFECATION", 100, "pH Level", "6.8", "", "Running", false, GreenTarget, 13.8f, 13.6f, 14.0f),
-//                ProcessStage("03", "EVAPORATION", 57, "Steam Efficiency", "57", "%", "BOTTLENECK", true, OrangeAlert, 11.2f, 10.8f, 11.0f),
-//                ProcessStage("04", "CLARIFICATION", 97, "Purity", "91", "%", "Running", false, PurplePredict, 11.7f, 11.7f, 12.5f),
-//                ProcessStage("05", "CONCENTRATION", 86, "Brix", "72", "°Bx", "Running", false, BlueActual, 8.8f, 10.3f, 10.5f)
-//            )
-//        )
-//    }
-//
-//    var activeAlert by remember { mutableStateOf<AlertMessage?>(null) }
-//
-//    // DATA SIMULATION LOOP
-//    LaunchedEffect(Unit) {
-//        while (true) {
-//            delay(2000)
-//            stages = stages.map {
-//                it.copy(
-//                    efficiency = (it.efficiency + Random.nextInt(-2, 3)).coerceIn(0, 100),
-//                    actualFlow = (it.actualFlow + Random.nextFloat() * 0.4f - 0.2f).coerceIn(8f, 18f)
-//                )
-//            }
-//            currentEnergy = (currentEnergy + Random.nextInt(-5, 6)).coerceIn(450, 550)
-//            oee = (oee + Random.nextInt(-1, 2)).coerceIn(0, 100)
-//        }
-//    }
-//
-//    LaunchedEffect(Unit) {
-//        val alerts = listOf(
-//            AlertMessage("Evaporation Bottleneck", "Steam pressure dropping below target threshold.", true),
-//            AlertMessage("AI Optimization", "Mill speed adjusted automatically. Yield +1.2%.", false)
-//        )
-//        while (true) {
-//            delay(6000)
-//            activeAlert = alerts.random()
-//            delay(4000)
-//            activeAlert = null
-//        }
-//    }
-//
-//    // ---------------------------------------------------------
-//    // 🎨 UI LAYOUT (70% / 30% Split for less congestion)
-//    // ---------------------------------------------------------
-//    Box(modifier = Modifier.fillMaxSize().background(BgAppSolid)) {
-//        Row(modifier = Modifier.fillMaxSize()) {
-//            Sidebar()
-//
-//            Column(
-//                modifier = Modifier
-//                    .fillMaxSize()
-//                    .padding(24.dp),
-//                verticalArrangement = Arrangement.spacedBy(20.dp)
-//            ) {
-//                // ROW 1: HEADER
-//                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-//                    Text("AURALISS ", color = BlueBrand, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-//                    Text("DASHBOARD", color = TextDark, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-//                }
-//
-//                Row(
-//                    modifier = Modifier.fillMaxSize(),
-//                    horizontalArrangement = Arrangement.spacedBy(20.dp)
-//                ) {
-//                    // ==========================================
-//                    // LEFT COLUMN (70% instead of 75%)
-//                    // ==========================================
-//                    Column(
-//                        modifier = Modifier.weight(0.7f).fillMaxHeight(),
-//                        verticalArrangement = Arrangement.spacedBy(20.dp)
-//                    ) {
-//                        // 1. TOP KPIs (Slightly taller to breathe)
-//                        Row(modifier = Modifier.fillMaxWidth().height(90.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-//                            TopKpiCard(Modifier.weight(1f), Icons.Filled.Factory, BlueActual, "Production Today", topKpis[0] + " MT")
-//                            TopKpiCard(Modifier.weight(1f), Icons.Filled.AttachMoney, GreenTarget, "Cost / Ton", "₹" + topKpis[1])
-//                            TopKpiCard(Modifier.weight(1f), Icons.Filled.Layers, CyanAccent, "Yield", topKpis[2])
-//                            TopKpiCard(Modifier.weight(1f), Icons.Filled.MonitorHeart, PurplePredict, "Machine Health", topKpis[3])
-//                            TopKpiCard(Modifier.weight(1f), Icons.Filled.Speed, BlueActual, "Throughput", topKpis[4])
-//                            TopKpiCard(Modifier.weight(1f), Icons.Outlined.Schedule, OrangeAlert, "Downtime", topKpis[5])
-//                        }
-//
-//                        // 2. MIDDLE AREA (Carousel + Chart)
-//                        WhitePanel(modifier = Modifier.weight(1f).fillMaxWidth()) {
-//                            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) { // Reduced padding for inner space
-//
-//                                // 🎴 5 OVERLAPPING CARDS (Reduced scaling & width to fix congestion)
-//                                Box(
-//                                    modifier = Modifier
-//                                        .fillMaxWidth()
-//                                        .weight(0.55f)
-//                                        .padding(bottom = 16.dp),
-//                                    contentAlignment = Alignment.Center
-//                                ) {
-//                                    val cardWidth = 140.dp // Reduced from 160.dp
-//                                    val offsets = listOf((-220).dp, (-110).dp, 0.dp, 110.dp, 220.dp) // Adjusted spread
-//                                    val scales = listOf(0.75f, 0.85f, 1.05f, 0.85f, 0.75f) // Reduced scale so center isn't massive
-//                                    val zIndices = listOf(1f, 2f, 3f, 2f, 1f)
-//
-//                                    stages.forEachIndexed { index, stage ->
-//                                        ProcessCard(
-//                                            stage = stage,
-//                                            modifier = Modifier
-//                                                .zIndex(zIndices[index])
-//                                                .offset(x = offsets[index])
-//                                                .scale(scales[index])
-//                                                .width(cardWidth)
-//                                                .fillMaxHeight(0.9f)
-//                                        )
-//                                    }
-//                                }
-//
-//                                // 📈 LINE CHART
-//                                TrendChartSection(stages, modifier = Modifier.weight(0.45f))
-//                            }
-//                        }
-//
-//                        // 3. BOTTOM ROW (3 Cards)
-//                        Row(modifier = Modifier.fillMaxWidth().height(120.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-//                            OeeCard(Modifier.weight(1f), oee)
-//                            EnergyCard(Modifier.weight(1f), currentEnergy)
-//                            HealthCard(Modifier.weight(1f))
-//                        }
-//                    }
-//
-//                    // ==========================================
-//                    // RIGHT COLUMN (30% instead of 25%)
-//                    // ==========================================
-//                    Column(
-//                        modifier = Modifier.weight(0.3f).fillMaxHeight(),
-//                        verticalArrangement = Arrangement.spacedBy(20.dp)
-//                    ) {
-//                        DecisionCenterUnified(Modifier.weight(1f))
-//                        AiGainCard(Modifier.height(120.dp))
-//                    }
-//                }
-//            }
-//        }
-//
-//        // ==========================================
-//        // OVERLAY: ALERT TOAST
-//        // ==========================================
-//        Box(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.TopCenter) {
-//            AnimatedVisibility(
-//                visible = activeAlert != null,
-//                enter = slideInVertically(initialOffsetY = { -it - 50 }) + fadeIn(),
-//                exit = slideOutVertically(targetOffsetY = { -it - 50 }) + fadeOut()
-//            ) {
-//                activeAlert?.let { alert ->
-//                    Row(
-//                        modifier = Modifier
-//                            .shadow(16.dp, RoundedCornerShape(30.dp), spotColor = if (alert.isCritical) RedCritical else BlueBrand)
-//                            .clip(RoundedCornerShape(30.dp))
-//                            .background(CardBgSolid)
-//                            .border(1.dp, (if (alert.isCritical) RedCritical else BlueBrand).copy(alpha = 0.3f), RoundedCornerShape(30.dp))
-//                            .padding(horizontal = 24.dp, vertical = 12.dp),
-//                        verticalAlignment = Alignment.CenterVertically,
-//                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-//                    ) {
-//                        Icon(
-//                            if (alert.isCritical) Icons.Rounded.Warning else Icons.Rounded.Info,
-//                            contentDescription = null,
-//                            tint = if (alert.isCritical) RedCritical else BlueBrand,
-//                            modifier = Modifier.size(24.dp)
-//                        )
-//                        Column {
-//                            Text(alert.title, color = TextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-//                            Text(alert.message, color = TextMuted, fontSize = 12.sp)
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//    }
-//}
-//
-//// ============================================================================
-//// 🧩 UI COMPONENTS
-//// ============================================================================
-//
-//@Composable
-//fun WhitePanel(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
-//    Box(
-//        modifier = modifier
-//            .shadow(elevation = 6.dp, shape = RoundedCornerShape(16.dp), spotColor = Color(0x14000000), ambientColor = Color(0x0A000000))
-//            .clip(RoundedCornerShape(16.dp))
-//            .background(CardBgSolid)
-//            .border(1.dp, BorderLight, RoundedCornerShape(16.dp)),
-//        content = content
-//    )
-//}
-//
-//@Composable
-//fun Sidebar() {
-//    Column(
-//        modifier = Modifier.fillMaxHeight().width(80.dp).background(CardBgSolid).border(1.dp, BorderLight).padding(vertical = 32.dp),
-//        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(36.dp)
-//    ) {
-//        Icon(Icons.Filled.Dashboard, null, tint = BlueBrand, modifier = Modifier.size(28.dp))
-//        Icon(Icons.Outlined.PrecisionManufacturing, null, tint = TextMuted, modifier = Modifier.size(24.dp))
-//        Icon(Icons.Outlined.Inventory, null, tint = TextMuted, modifier = Modifier.size(24.dp))
-//        Icon(Icons.Outlined.WarningAmber, null, tint = TextMuted, modifier = Modifier.size(24.dp))
-//        Icon(Icons.Outlined.Assessment, null, tint = TextMuted, modifier = Modifier.size(24.dp))
-//        Icon(Icons.Outlined.Lightbulb, null, tint = TextMuted, modifier = Modifier.size(24.dp))
-//        Spacer(modifier = Modifier.weight(1f))
-//        Icon(Icons.Outlined.Settings, null, tint = TextMuted, modifier = Modifier.size(24.dp))
-//    }
-//}
-//
-//// ----------------------------------------------------------------------------
-//// Fix for Wrapping text: Stack layout for KPIs
-//// ----------------------------------------------------------------------------
-//@Composable
-//fun TopKpiCard(modifier: Modifier, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, title: String, value: String) {
-//    WhitePanel(modifier = modifier.fillMaxHeight()) {
-//        Column(
-//            modifier = Modifier.fillMaxSize().padding(12.dp),
-//            verticalArrangement = Arrangement.SpaceBetween,
-//            horizontalAlignment = Alignment.Start
-//        ) {
-//            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-//                Box(modifier = Modifier.size(32.dp).background(color.copy(alpha = 0.1f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-//                    Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
-//                }
-//                Text(value, color = TextDark, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-//            }
-//            Text(title, color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-//        }
-//    }
-//}
-//
-//// ----------------------------------------------------------------------------
-//// 🏭 OVERLAPPING PROCESS CARD (Smaller Elements)
-//// ----------------------------------------------------------------------------
-//@Composable
-//fun ProcessCard(stage: ProcessStage, modifier: Modifier) {
-//    val isMain = stage.isBottleneck
-//
-//    Box(
-//        modifier = modifier
-//            .shadow(if(isMain) 16.dp else 4.dp, RoundedCornerShape(16.dp), spotColor = if(isMain) OrangeAlert.copy(alpha=0.3f) else Color.Black.copy(alpha=0.05f))
-//            .clip(RoundedCornerShape(16.dp))
-//            .background(CardBgSolid)
-//            .border(if(isMain) 2.dp else 1.dp, if(isMain) stage.color.copy(alpha=0.5f) else BorderLight, RoundedCornerShape(16.dp))
-//            .padding(12.dp) // Reduced padding for breathing room
-//    ) {
-//        Column(
-//            modifier = Modifier.fillMaxSize(),
-//            horizontalAlignment = Alignment.CenterHorizontally,
-//            verticalArrangement = Arrangement.SpaceBetween
-//        ) {
-//            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
-//                Box(modifier = Modifier.size(20.dp).background(stage.color, CircleShape), contentAlignment = Alignment.Center) {
-//                    Text(stage.id, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-//                }
-//            }
-//
-//            Icon(Icons.Outlined.PrecisionManufacturing, null, tint = TextMuted.copy(alpha=0.6f), modifier = Modifier.size(if(isMain) 48.dp else 36.dp))
-//            Text(stage.name, color = TextDark, fontSize = if(isMain) 13.sp else 11.sp, fontWeight = FontWeight.ExtraBold)
-//
-//            Box(modifier = Modifier.size(if(isMain) 76.dp else 60.dp), contentAlignment = Alignment.Center) {
-//                Canvas(Modifier.fillMaxSize()) {
-//                    drawArc(Color(0xFFF1F5F9), -90f, 360f, false, style = Stroke(5.dp.toPx()))
-//                    drawArc(stage.color, -90f, (stage.efficiency / 100f) * 360f, false, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
-//                }
-//                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-//                    Text("${stage.efficiency}%", color = TextDark, fontSize = if(isMain) 20.sp else 16.sp, fontWeight = FontWeight.Bold)
-//                    Text("Efficiency", color = TextMuted, fontSize = 8.sp)
-//                }
-//            }
-//
-//            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-//                Row(verticalAlignment = Alignment.CenterVertically) {
-//                    Icon(Icons.Filled.WaterDrop, null, tint = stage.color, modifier = Modifier.size(10.dp))
-//                    Spacer(modifier = Modifier.width(4.dp))
-//                    Text(stage.metricLabel, color = TextMuted, fontSize = 9.sp)
-//                }
-//                Row(verticalAlignment = Alignment.Bottom) {
-//                    Text(stage.metricValue, color = TextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-//                    if (stage.metricUnit.isNotEmpty()) Text(" ${stage.metricUnit}", color = TextMuted, fontSize = 9.sp, modifier = Modifier.padding(bottom=2.dp))
-//                }
-//            }
-//
-//            val statusColor = if(stage.status == "Running") GreenTarget else RedCritical
-//            Row(
-//                modifier = Modifier
-//                    .background(statusColor.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
-//                    .padding(horizontal = 10.dp, vertical = 4.dp),
-//                verticalAlignment = Alignment.CenterVertically
-//            ) {
-//                Box(modifier = Modifier.size(5.dp).background(statusColor, CircleShape))
-//                Spacer(modifier = Modifier.width(6.dp))
-//                Text(stage.status, color = statusColor, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-//            }
-//        }
-//    }
-//}
-//
-//// ----------------------------------------------------------------------------
-//// 📈 MULTI-LINE TREND CHART
-//// ----------------------------------------------------------------------------
-//@Composable
-//fun TrendChartSection(stages: List<ProcessStage>, modifier: Modifier) {
-//    Column(modifier = modifier.fillMaxWidth().background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp)).border(1.dp, BorderLight, RoundedCornerShape(12.dp)).padding(16.dp)) {
-//
-//        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-//            Text("PRODUCTION FLOW TREND (T/hr)", color = TextDark, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-//                LegendLine("Actual", BlueActual, false)
-//                LegendLine("Predicted", PurplePredict, true)
-//                LegendLine("Design Target", GreenTarget, true)
-//            }
-//        }
-//
-//        Spacer(modifier = Modifier.height(16.dp))
-//
-//        Canvas(modifier = Modifier.fillMaxSize()) {
-//            val w = size.width
-//            val h = size.height
-//            val maxVal = 20f
-//            val paddingX = 40.dp.toPx()
-//            val stepX = (w - paddingX * 2) / (stages.size - 1)
-//
-//            val ySteps = listOf(0, 5, 10, 15, 20)
-//            ySteps.forEach { v ->
-//                val y = h - (v / maxVal) * h
-//                drawContext.canvas.nativeCanvas.drawText(v.toString(), 0f, y + 4.dp.toPx(), android.graphics.Paint().apply { color = TextMuted.toArgb(); textSize = 9.sp.toPx() })
-//                drawLine(Color.LightGray.copy(alpha=0.3f), Offset(20.dp.toPx(), y), Offset(w, y), 1.dp.toPx())
-//            }
-//
-//            val highlightX = paddingX + (2 * stepX)
-//            drawRect(
-//                color = OrangeAlert.copy(alpha = 0.05f),
-//                topLeft = Offset(highlightX - (stepX/2), 0f),
-//                size = Size(stepX, h)
-//            )
-//
-//            val pathActual = Path()
-//            val pathPredict = Path()
-//            val pathTarget = Path()
-//
-//            stages.forEachIndexed { i, stage ->
-//                val nx = paddingX + (i * stepX)
-//                val ay = h - (stage.actualFlow / maxVal) * h
-//                val py = h - (stage.predictedFlow / maxVal) * h
-//                val ty = h - (stage.targetFlow / maxVal) * h
-//
-//                if (i == 0) {
-//                    pathActual.moveTo(nx, ay); pathPredict.moveTo(nx, py); pathTarget.moveTo(nx, ty)
-//                } else {
-//                    val prevX = paddingX + ((i - 1) * stepX)
-//                    val prevAy = h - (stages[i - 1].actualFlow / maxVal) * h
-//                    val prevPy = h - (stages[i - 1].predictedFlow / maxVal) * h
-//                    val prevTy = h - (stages[i - 1].targetFlow / maxVal) * h
-//
-//                    pathActual.cubicTo(prevX + stepX/2, prevAy, prevX + stepX/2, ay, nx, ay)
-//                    pathPredict.cubicTo(prevX + stepX/2, prevPy, prevX + stepX/2, py, nx, py)
-//                    pathTarget.cubicTo(prevX + stepX/2, prevTy, prevX + stepX/2, ty, nx, ty)
-//                }
-//
-//                drawCircle(CardBgSolid, 4.dp.toPx(), Offset(nx, ty))
-//                drawCircle(GreenTarget, 3.dp.toPx(), Offset(nx, ty), style = Stroke(2.dp.toPx()))
-//                drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", stage.targetFlow), nx, ty - 8.dp.toPx(), android.graphics.Paint().apply { color = GreenTarget.toArgb(); textSize = 9.sp.toPx(); textAlign = android.graphics.Paint.Align.CENTER; isFakeBoldText = true })
-//
-//                drawCircle(CardBgSolid, 4.dp.toPx(), Offset(nx, py))
-//                drawCircle(PurplePredict, 3.dp.toPx(), Offset(nx, py), style = Stroke(2.dp.toPx()))
-//                drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", stage.predictedFlow), nx, py + 16.dp.toPx(), android.graphics.Paint().apply { color = PurplePredict.toArgb(); textSize = 9.sp.toPx(); textAlign = android.graphics.Paint.Align.CENTER })
-//
-//                drawCircle(BlueActual, 4.dp.toPx(), Offset(nx, ay))
-//                drawContext.canvas.nativeCanvas.drawText(String.format("%.1f", stage.actualFlow), nx, ay + 16.dp.toPx(), android.graphics.Paint().apply { color = BlueActual.toArgb(); textSize = 9.sp.toPx(); textAlign = android.graphics.Paint.Align.CENTER; isFakeBoldText = true })
-//
-//                val label = stage.name.lowercase().replaceFirstChar { it.uppercase() }
-//                drawContext.canvas.nativeCanvas.drawText(label, nx, h + 20.dp.toPx(), android.graphics.Paint().apply { color = TextDark.toArgb(); textSize = 10.sp.toPx(); textAlign = android.graphics.Paint.Align.CENTER })
-//            }
-//
-//            drawPath(pathTarget, GreenTarget, style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))))
-//            drawPath(pathPredict, PurplePredict, style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))))
-//            drawPath(pathActual, BlueActual, style = Stroke(2.dp.toPx()))
-//        }
-//    }
-//}
-//
-//@Composable
-//fun LegendLine(text: String, color: Color, isDashed: Boolean) {
-//    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-//        Canvas(modifier = Modifier.width(16.dp).height(2.dp)) {
-//            drawLine(color, Offset(0f, 0f), Offset(size.width, 0f), 2.dp.toPx(), pathEffect = if (isDashed) PathEffect.dashPathEffect(floatArrayOf(6f, 6f)) else null)
-//        }
-//        Text(text, color = TextDark, fontSize = 10.sp)
-//    }
-//}
-//
-//// ----------------------------------------------------------------------------
-//// 🤖 UNIFIED DECISION CENTER (Right Sidebar)
-//// ----------------------------------------------------------------------------
-//@Composable
-//fun DecisionCenterUnified(modifier: Modifier) {
-//    WhitePanel(modifier = modifier.fillMaxWidth()) {
-//        Column(
-//            modifier = Modifier.fillMaxSize().padding(20.dp),
-//            verticalArrangement = Arrangement.spacedBy(16.dp)
-//        ) {
-//            Text("AURALISS AI DECISION CENTER", color = BlueBrand, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
-//
-//            Column(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .border(1.dp, RedCritical.copy(alpha=0.3f), RoundedCornerShape(12.dp))
-//                    .padding(16.dp)
-//            ) {
-//                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
-//                    Icon(Icons.Filled.Search, null, tint = RedCritical, modifier = Modifier.size(18.dp))
-//                    Column {
-//                        Text("ROOT CAUSE ANALYSIS", color = RedCritical, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//                        Text("Why is production low?", color = TextMuted, fontSize = 10.sp)
-//                    }
-//                }
-//                Column(modifier = Modifier.padding(start = 24.dp)) {
-//                    Row(verticalAlignment = Alignment.CenterVertically) {
-//                        Text("↓", color = TextMuted, fontSize = 14.sp, modifier = Modifier.offset(x = (-12).dp))
-//                        Text(" Low Steam Pressure (2.1 bar)", color = TextDark, fontSize = 11.sp)
-//                    }
-//                    Spacer(Modifier.height(8.dp))
-//                    Row(verticalAlignment = Alignment.CenterVertically) {
-//                        Text("↓", color = TextMuted, fontSize = 14.sp, modifier = Modifier.offset(x = (-12).dp))
-//                        Text(" Evaporator Throughput Low", color = TextDark, fontSize = 11.sp)
-//                    }
-//                }
-//            }
-//
-//            Column(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .border(1.dp, OrangeAlert.copy(alpha=0.3f), RoundedCornerShape(12.dp))
-//                    .padding(16.dp)
-//            ) {
-//                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 12.dp)) {
-//                    Icon(Icons.Filled.LinkOff, null, tint = OrangeAlert, modifier = Modifier.size(18.dp))
-//                    Column {
-//                        Text("CRITICAL BOTTLENECK", color = OrangeAlert, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//                        Text("Where is the constraint?", color = TextMuted, fontSize = 10.sp)
-//                    }
-//                }
-//                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-//                    Column {
-//                        Text("Evaporation Section", color = TextDark, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-//                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top=4.dp)) {
-//                            Text("Loss Impact", color = RedCritical, fontSize = 10.sp, modifier = Modifier.background(RedCritical.copy(alpha=0.1f), RoundedCornerShape(4.dp)).padding(horizontal=6.dp, vertical=2.dp))
-//                            Spacer(Modifier.width(8.dp))
-//                            Text("28 MT/day", color = TextDark, fontSize = 11.sp)
-//                        }
-//                    }
-//
-//                    Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-//                        Canvas(Modifier.fillMaxSize()) {
-//                            drawArc(Color(0xFFE2E8F0), -90f, 360f, false, style = Stroke(5.dp.toPx()))
-//                            drawArc(OrangeAlert, -90f, 0.72f * 360f, false, style = Stroke(5.dp.toPx(), cap = StrokeCap.Round))
-//                        }
-//                        Text("72%", color = TextDark, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-//                    }
-//                }
-//            }
-//
-//            Row(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .weight(1f)
-//                    .background(Color(0xFFF8FAFC), RoundedCornerShape(12.dp))
-//                    .border(1.dp, BorderLight, RoundedCornerShape(12.dp))
-//                    .clip(RoundedCornerShape(12.dp))
-//            ) {
-//                Box(modifier = Modifier.width(4.dp).fillMaxHeight().background(GreenTarget))
-//
-//                Column(modifier = Modifier.padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-//                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-//                        Icon(Icons.Filled.Build, null, tint = GreenTarget, modifier = Modifier.size(18.dp))
-//                        Column {
-//                            Text("RECOMMENDED ACTION", color = GreenTarget, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//                            Text("What should we do?", color = TextMuted, fontSize = 10.sp)
-//                        }
-//                    }
-//
-//                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-//                        Row(verticalAlignment = Alignment.CenterVertically) {
-//                            Icon(Icons.Filled.CheckCircle, null, tint = GreenTarget, modifier = Modifier.size(14.dp))
-//                            Text(" Increase Steam Pressure by 0.7 bar", color = TextDark, fontSize = 11.sp, modifier = Modifier.padding(start=8.dp))
-//                        }
-//                        Row(verticalAlignment = Alignment.CenterVertically) {
-//                            Icon(Icons.Filled.CheckCircle, null, tint = GreenTarget, modifier = Modifier.size(14.dp))
-//                            Text(" Inspect Steam Control Valve V-12", color = TextDark, fontSize = 11.sp, modifier = Modifier.padding(start=8.dp))
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//    }
-//}
-//
-//@Composable
-//fun AiGainCard(modifier: Modifier) {
-//    WhitePanel(modifier = modifier.fillMaxWidth()) {
-//        Box(Modifier.fillMaxSize().background(GreenTarget.copy(alpha=0.04f))) {
-//            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
-//                Row(verticalAlignment = Alignment.CenterVertically) {
-//                    Icon(Icons.Filled.AutoAwesome, null, tint = GreenTarget, modifier = Modifier.size(16.dp))
-//                    Text(" AI GAIN (IMPACT)", color = GreenTarget, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start=8.dp))
-//                }
-//                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-//                    Column {
-//                        Text("+4.8%", color = GreenTarget, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-//                        Text("vs Yesterday", color = TextMuted, fontSize = 10.sp)
-//                    }
-//                    Canvas(Modifier.width(50.dp).height(24.dp)) {
-//                        val path = Path()
-//                        path.moveTo(0f, size.height*0.8f); path.lineTo(size.width*0.3f, size.height*0.6f); path.lineTo(size.width*0.6f, size.height*0.2f); path.lineTo(size.width, 0f)
-//                        drawPath(path, GreenTarget, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
-//                    }
-//                }
-//                Box(Modifier.fillMaxWidth().height(1.dp).background(BorderLight))
-//                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-//                    Text("Savings", color = TextMuted, fontSize = 11.sp)
-//                    Text("₹18,500/day", color = TextDark, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//                }
-//            }
-//        }
-//    }
-//}
-//
-//// ----------------------------------------------------------------------------
-//// 📊 BOTTOM ROW KPIs (Less Congested Text & Padding)
-//// ----------------------------------------------------------------------------
-//@Composable
-//fun OeeCard(modifier: Modifier, oee: Int) {
-//    WhitePanel(modifier = modifier) {
-//        Column(Modifier.fillMaxSize().padding(12.dp)) {
-//            Text("OEE", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//            Row(Modifier.fillMaxSize().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-//                Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
-//                    Canvas(Modifier.fillMaxSize()) {
-//                        drawArc(Color(0xFFE2E8F0), -90f, 360f, false, style = Stroke(5.dp.toPx()))
-//                        drawArc(BlueActual, -90f, (oee / 100f) * 360f, false, style = Stroke(5.dp.toPx(), cap=StrokeCap.Round))
-//                    }
-//                    Text("$oee%", color = TextDark, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-//                }
-//                Column(Modifier.padding(start=12.dp).fillMaxHeight(), verticalArrangement = Arrangement.SpaceEvenly) {
-//                    OeeStat("Availability", "91%")
-//                    OeeStat("Performance", "95%")
-//                    OeeStat("Quality", "99%")
-//                }
-//            }
-//        }
-//    }
-//}
-//
-//@Composable
-//fun EnergyCard(modifier: Modifier, energy: Int) {
-//    WhitePanel(modifier = modifier) {
-//        Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.SpaceBetween) {
-//            Text("Energy Efficiency", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//            Row(verticalAlignment = Alignment.CenterVertically) {
-//                Icon(Icons.Filled.Power, null, tint = BlueBrand, modifier = Modifier.size(28.dp))
-//                Column(Modifier.padding(start = 12.dp)) {
-//                    Text("$energy kW", color = TextDark, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-//                    Text("Current Consumption", color = TextMuted, fontSize = 10.sp)
-//                }
-//            }
-//            Text("Total Usage: 1,850 kWh", color = TextMuted, fontSize = 10.sp)
-//        }
-//    }
-//}
-//
-//@Composable
-//fun HealthCard(modifier: Modifier) {
-//    WhitePanel(modifier = modifier) {
-//        Column(Modifier.fillMaxSize().padding(12.dp)) {
-//            Text("Resource Health", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//            Row(Modifier.fillMaxWidth().padding(top=8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-//                Text("91%", color = TextDark, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-//                Text("Healthy", color = GreenTarget, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-//            }
-//            Box(Modifier.fillMaxWidth().padding(top=8.dp, bottom=8.dp).height(5.dp).background(Color(0xFFE2E8F0), CircleShape)) {
-//                Box(Modifier.fillMaxWidth(0.91f).fillMaxHeight().background(GreenTarget, CircleShape))
-//            }
-//            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-//                Text("Next Service", color = TextMuted, fontSize = 10.sp)
-//                Text("2 Days", color = TextDark, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-//            }
-//        }
-//    }
-//}
-//
-//@Composable
-//fun OeeStat(label: String, value: String) {
-//    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-//        Text(label, color = TextMuted, fontSize = 10.sp)
-//        Text(value, color = GreenTarget, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-//    }
-//}
+
+@Composable
+fun KpiCell(theme: DashboardTheme, title: String, value: String, unit: String, color: Color) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(title, color = theme.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(4.dp))
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, color = theme.textMain, fontSize = 24.sp, fontWeight = FontWeight.Black)
+            if (unit.isNotEmpty()) {
+                Text(
+                    " $unit",
+                    color = color,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun KpiRow(theme: DashboardTheme, label: String, value: String, unit: String, color: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = theme.textMuted, fontSize = 12.sp)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(value, color = theme.textMain, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text(
+                " $unit",
+                color = color,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 1.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun KpiCellMini(theme: DashboardTheme, label: String, value: String, unit: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, color = theme.textLightMuted, fontSize = 10.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(value, color = theme.textMain, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(unit, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    }
+}

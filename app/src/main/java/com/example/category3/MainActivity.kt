@@ -1,9 +1,11 @@
 package com.example.category3
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,6 +22,7 @@ import com.example.category3.auth.ui.AppNavigation
 import com.example.category3.auth.ui.SplashVideoScreen
 
 class MainActivity : ComponentActivity() {
+    @RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -55,6 +58,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // 🎬 SPLASH SCREEN STATE TRANSITION LAYER
+@RequiresApi(Build.VERSION_CODES.VANILLA_ICE_CREAM)
 @Composable
 fun AppNavigationCoreFramework() {
     var isSplashActive by remember { mutableStateOf(true) }

@@ -2,6 +2,7 @@ package com.example.category3.auth.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,9 +24,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Analytics
 import androidx.compose.material.icons.rounded.Camera
@@ -54,6 +57,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -70,10 +74,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.category3.utils.MorphicSpeechTranslator
@@ -82,6 +89,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlin.random.Random
+
+// Fallback FontFamily (Remove if FontTelemetryMono is globally defined)
 
 data class DcsProcessState(
     // 1. Metric Matrix Inputs (Automated PLC Sensors)
@@ -133,13 +142,15 @@ private val TechAccentGreen = Color(0xFF10B981)
 private val TechWarnOrange = Color(0xFFF97316)
 private val TechAlarmRed = Color(0xFFEF4444)
 
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun DcsScreen(
     onNavigationCallback: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+
     val currentDate = remember { LocalDate.now().format(DateTimeFormatter.ISO_DATE) }
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
     var state by remember { mutableStateOf(DcsProcessState()) }
@@ -203,320 +214,361 @@ fun DcsScreen(
         Modifier.background(palette.baseChassis)
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .then(structuralBackgroundModifier)
-            .padding(14.dp),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+    // ============================================================================
+    // 🧩 MODULAR COMPONENT BLOCKS
+    // ============================================================================
+    val HeaderContent = @Composable {
+        val containerModifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
+            .background(palette.glassFill, RoundedCornerShape(10.dp))
+            .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp)
 
-            // ============================================================================
-            // MASTER HEADER
-            // ============================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
-                    .background(palette.glassFill, RoundedCornerShape(10.dp))
-                    .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("DISTRIBUTED CONTROL COCKPIT [PROCESS FLOW MATRIX CONSOLE]", color = palette.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
-                    Row(
-                        modifier = Modifier.padding(top = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isDarkThemeOverride) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
-                            contentDescription = null, tint = if (isDarkThemeOverride) TechAccentBlue else TechWarnOrange,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT",
-                            color = palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold
-                        )
-                        Switch(
-                            checked = isDarkThemeOverride, onCheckedChange = { isDarkThemeOverride = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = TechAccentBlue),
-                            modifier = Modifier.graphicsLayer(scaleX = 0.65f, scaleY = 0.65f)
-                        )
-                    }
-                }
-
-                Column(horizontalAlignment = Alignment.End) {
-                    Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                    Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // ============================================================================
-            // DATA ENTRY WORKSPACE LAYER
-            // ============================================================================
-            Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-
-                // 🛑 LEFT COLUMN: METRIC MATRIX & STATUS BADGES
-                Column(
-                    modifier = Modifier.weight(1.0f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Process metrics from hardware sensors
-                    DcsFormSectionCard(title = "PROCESS STREAM METRIC MATRIX [PLC LIVE LINK]", icon = Icons.Rounded.Speed, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.weight(1f)) {
-                        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize().padding(bottom = 4.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                DcsLogInputField("RAW JUICE FLOW (M³/H)", state.rawJuiceFlow, palette, Modifier.weight(1f), isReadOnly = true) {}
-                                DcsLogInputField("CLEAR JUICE YIELD (%)", state.clearJuiceYield, palette, Modifier.weight(1f), isReadOnly = true) {}
-                            }
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                DcsLogInputField("DEFECATED JUICE (pH)", state.defecatedJuicePh, palette, Modifier.weight(1f), isReadOnly = true) {}
-                                DcsLogInputField("DCH TOWER TEMP (°C)", state.dchTemperature, palette, Modifier.weight(1f), isReadOnly = true) {}
-                            }
-                        }
-                    }
-
-                    // Critical Hardware Badges
-                    DcsFormSectionCard(title = "CRITICAL HARDWARE STATUSES [PLC MONITOR]", icon = Icons.Rounded.Settings, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.weight(1.1f)) {
-                        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize().padding(vertical = 4.dp)) {
-                            HardwareStateBadge("JUICE TRANS PUMP 01", state.pump1Status, palette)
-                            HardwareStateBadge("JUICE TRANS PUMP 02", state.pump2Status, palette)
-                            HardwareStateBadge("VIBROSCREEN CLUSTER DRIVES", state.vibroscreenStatus, palette)
-                            HardwareStateBadge("ROTARY SCREEN TRANSMISSION", state.rotaryRunning, palette)
-                        }
-                    }
-                }
-
-                // 🛑 CENTER COLUMN: MANUAL TOTALIZER PIPELINE LOGS
-                Column(
-                    modifier = Modifier.weight(1.1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    DcsFormSectionCard(title = "FACTORY PIPELINE TOTALIZER NODES", icon = Icons.Rounded.Analytics, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.fillMaxSize()) {
-                        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                            // A. Raw Juice Flow Block
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("A. RAW JUICE FLOW BLOCK (M³)", color = TechAccentBlue, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    DcsLogInputField("INITIAL", state.rjInitial, palette, Modifier.weight(1f)) { state = state.copy(rjInitial = it, rjTotal = autoComputeTotal(it, state.rjFinal), isSubmitted = false) }
-                                    DcsLogInputField("FINAL", state.rjFinal, palette, Modifier.weight(1f)) { state = state.copy(rjFinal = it, rjTotal = autoComputeTotal(state.rjInitial, it), isSubmitted = false) }
-                                    DcsLogInputField("NET TOTAL", state.rjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
-                                }
-                            }
-                            HorizontalDivider(color = palette.dividerLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
-
-                            // B. Clear Juice Block
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("B. CLEAR JUICE METRIC BLOCK (M³)", color = TechAccentGreen, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    DcsLogInputField("INITIAL", state.cjInitial, palette, Modifier.weight(1f)) { state = state.copy(cjInitial = it, cjTotal = autoComputeTotal(it, state.cjFinal), isSubmitted = false) }
-                                    DcsLogInputField("FINAL", state.cjFinal, palette, Modifier.weight(1f)) { state = state.copy(cjFinal = it, cjTotal = autoComputeTotal(state.cjInitial, it), isSubmitted = false) }
-                                    DcsLogInputField("NET TOTAL", state.cjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
-                                }
-                            }
-                            HorizontalDivider(color = palette.dividerLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 4.dp))
-
-                            // C. Flocculant Feed Block
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("C. FLOCCULANT FEED PIPELINE (KG)", color = TechWarnOrange, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    DcsLogInputField("INITIAL", state.flocInitial, palette, Modifier.weight(1f)) { state = state.copy(flocInitial = it, flocTotal = autoComputeTotal(it, state.flocFinal), isSubmitted = false) }
-                                    DcsLogInputField("FINAL", state.flocFinal, palette, Modifier.weight(1f)) { state = state.copy(flocFinal = it, flocTotal = autoComputeTotal(state.flocInitial, it), isSubmitted = false) }
-                                    DcsLogInputField("NET TOTAL", state.flocTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 🛑 RIGHT COLUMN: CAMERA SENSORY, SPEECH INPUTS & SIGNATURE
-                Column(
-                    modifier = Modifier.weight(1.0f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Camera Window
-                    DcsFormSectionCard(title = "SENSORY PROOF VALIDATION WINDOW", icon = Icons.Rounded.Camera, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.weight(0.6f)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth().fillMaxHeight().clip(RoundedCornerShape(6.dp))
-                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column {
-                                    Text("Consist Verification Shutter", fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    Text(text = if (capturedImage != null) "IMAGE VERIFIED ✔" else "Secure visual totalizer log pass.", fontFamily = FontTelemetryMono, color = if (capturedImage != null) TechAccentGreen else palette.textMuted, fontSize = 10.sp)
-                                }
-
-                                if (capturedImage != null) {
-                                    Image(
-                                        bitmap = capturedImage!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(44.dp).clip(RoundedCornerShape(4.dp)).border(1.dp, TechAccentGreen, RoundedCornerShape(4.dp)).clickable { capturedImage = null }
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .height(34.dp).width(125.dp).clip(RoundedCornerShape(6.dp))
-                                            .background(TechAccentBlue.copy(alpha = 0.15f)).border(1.dp, TechAccentBlue, RoundedCornerShape(6.dp))
-                                            .clickable {
-                                                val hasPermission = context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                                                if (hasPermission) cameraLauncher.launch(null) else permissionLauncher.launch(Manifest.permission.CAMERA)
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(13.dp))
-                                            Text("OPEN PREVIEW", color = TechAccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Morphic Speech Translator
-                    DcsFormSectionCard(title = "DCS ANNOTATION AUDIO LOG", icon = Icons.Rounded.Notes, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.weight(0.9f)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth().fillMaxHeight().clip(RoundedCornerShape(6.dp))
-                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(6.dp))
-                                .padding(10.dp)
-                        ) {
-                            BasicTextField(
-                                value = state.operatorRemarks, onValueChange = { state = state.copy(operatorRemarks = it, isSubmitted = false) },
-                                textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 13.sp),
-                                cursorBrush = SolidColor(palette.textPrimary), modifier = Modifier.fillMaxSize().padding(end = 36.dp),
-                                decorationBox = { innerTextField ->
-                                    if (state.operatorRemarks.isEmpty()) {
-                                        Text(text = "TAP MIC KEY AND STATE VALVE ANOMALIES...", color = if (isListening) TechAlarmRed else palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono)
-                                    }
-                                    innerTextField()
-                                }
-                            )
-
-                            Box(modifier = Modifier.align(Alignment.BottomEnd)) {
-                                if (isTranslating) {
-                                    CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TechAccentBlue, strokeWidth = 2.dp)
-                                } else {
-                                    IconButton(
-                                        modifier = Modifier.size(26.dp),
-                                        onClick = {
-                                            if (!isListening) {
-                                                val hasPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                                                if (hasPermission) {
-                                                    speechTranslator.startListening(
-                                                        onStatusChange = { currentVoiceStatusText = it },
-                                                        onListeningStateChange = { isListening = it },
-                                                        onTranslatingStateChange = { isTranslating = it },
-                                                        onResultReceived = { state = state.copy(operatorRemarks = it, isSubmitted = false) }
-                                                    )
-                                                } else {
-                                                    (context as? android.app.Activity)?.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 101)
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(imageVector = if (isListening) Icons.Rounded.Mic else Icons.Rounded.MicNone, contentDescription = null, tint = if (isListening) TechAlarmRed else TechAccentBlue, modifier = Modifier.size(20.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Signature Matrix
-                    DcsFormSectionCard(title = "OPERATOR SIGNATURE CONTROL WINDOW", icon = Icons.Rounded.Draw, palette = palette, isDark = isDarkThemeOverride, modifier = Modifier.weight(1.1f)) {
-                        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("DRAW VERIFICATION INTEGRITY TRACE:", color = palette.textPrimary, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
-                                Text(
-                                    text = "WIPE PANEL", color = TechAlarmRed, fontSize = 10.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black,
-                                    modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth().weight(1f).padding(top = 4.dp)
-                                    .shadow(elevation = 3.dp, shape = RoundedCornerShape(8.dp))
-                                    .background(palette.glassFill, RoundedCornerShape(8.dp)).border(1.dp, palette.glassBorder, RoundedCornerShape(8.dp))
-                            ) {
-                                if (signaturePoints.isEmpty()) {
-                                    Text(text = "TOUCH AUTHENTICATOR MATRIX ON...", color = palette.textMuted.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontTelemetryMono, modifier = Modifier.align(Alignment.Center))
-                                }
-                                Canvas(
-                                    modifier = Modifier.fillMaxSize().pointerInteropFilter { event ->
-                                        when (event.action) {
-                                            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> { signaturePoints.add(Offset(event.x, event.y)); true }
-                                            MotionEvent.ACTION_UP -> { signaturePoints.add(Offset.Unspecified); true }
-                                            else -> false
-                                        }
-                                    }
-                                ) {
-                                    if (signaturePoints.size > 1) {
-                                        val path = Path()
-                                        var first = true
-                                        for (point in signaturePoints) {
-                                            if (point == Offset.Unspecified) { first = true; continue }
-                                            if (first) { path.moveTo(point.x, point.y); first = false } else { path.lineTo(point.x, point.y) }
-                                        }
-                                        drawPath(path = path, color = if (isDarkThemeOverride) TechAccentBlue else MinimalistTextPrimary, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ============================================================================
-            // FOOTER ACTION COMMIT BAR
-            // ============================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
-                    .background(palette.glassFill, RoundedCornerShape(10.dp))
-                    .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
-                    .padding(8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .height(34.dp).clip(RoundedCornerShape(6.dp))
-                        .background(if (signaturePoints.isNotEmpty()) TechAccentGreen.copy(alpha = 0.12f) else TechAlarmRed.copy(alpha = 0.08f))
-                        .border(1.dp, if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, RoundedCornerShape(6.dp))
-                        .padding(horizontal = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (signaturePoints.isNotEmpty()) "DCS JOURNAL INTERLOCKS VERIFIED ✔" else "ESIGN JOURNAL DISPATCH SECURITY REQUIRED ❌",
-                        color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black
+        val headerDetails = @Composable {
+            Column {
+                Text(
+                    "DISTRIBUTED CONTROL COCKPIT [PROCESS FLOW MATRIX]",
+                    color = palette.textPrimary, fontSize = if (isPortrait) 13.sp else 16.sp,
+                    fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                Row(modifier = Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(imageVector = if (isDarkThemeOverride) Icons.Rounded.DarkMode else Icons.Rounded.LightMode, contentDescription = null, tint = if (isDarkThemeOverride) TechAccentBlue else TechWarnOrange, modifier = Modifier.size(14.dp))
+                    Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Switch(
+                        checked = isDarkThemeOverride, onCheckedChange = { isDarkThemeOverride = it },
+                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = TechAccentBlue),
+                        modifier = Modifier.graphicsLayer(scaleX = 0.65f, scaleY = 0.65f)
                     )
                 }
+            }
+        }
+        val timeDetails = @Composable {
+            Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
+                Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
+                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+            }
+        }
 
+        if (isPortrait) {
+            Column(modifier = containerModifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                headerDetails()
+                timeDetails()
+            }
+        } else {
+            Row(modifier = containerModifier, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                headerDetails()
+                timeDetails()
+            }
+        }
+    }
+
+    val MetricsContent = @Composable { modifier: Modifier ->
+        DcsFormSectionCard(title = "PROCESS STREAM METRIC MATRIX [PLC LIVE LINK]", icon = Icons.Rounded.Speed, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(verticalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxSize().padding(bottom = 4.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DcsLogInputField("RAW JUICE FLOW (M³/H)", state.rawJuiceFlow, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    DcsLogInputField("CLEAR JUICE YIELD (%)", state.clearJuiceYield, palette, Modifier.weight(1f), isReadOnly = true) {}
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DcsLogInputField("DEFECATED JUICE (pH)", state.defecatedJuicePh, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    DcsLogInputField("DCH TOWER TEMP (°C)", state.dchTemperature, palette, Modifier.weight(1f), isReadOnly = true) {}
+                }
+            }
+        }
+    }
+
+    val HardwareContent = @Composable { modifier: Modifier ->
+        DcsFormSectionCard(title = "CRITICAL HARDWARE STATUSES [PLC MONITOR]", icon = Icons.Rounded.Settings, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(verticalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxSize().padding(vertical = 4.dp)) {
+                HardwareStateBadge("JUICE TRANS PUMP 01", state.pump1Status, palette)
+                HardwareStateBadge("JUICE TRANS PUMP 02", state.pump2Status, palette)
+                HardwareStateBadge("VIBROSCREEN CLUSTER DRIVES", state.vibroscreenStatus, palette)
+                HardwareStateBadge("ROTARY SCREEN TRANSMISSION", state.rotaryRunning, palette)
+            }
+        }
+    }
+
+    val TotalizerContent = @Composable { modifier: Modifier ->
+        DcsFormSectionCard(title = "FACTORY PIPELINE TOTALIZER NODES", icon = Icons.Rounded.Analytics, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                // A. Raw Juice Flow Block
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("A. RAW JUICE FLOW BLOCK (M³)", color = TechAccentBlue, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DcsLogInputField("INITIAL", state.rjInitial, palette, Modifier.weight(1f)) { state = state.copy(rjInitial = it, rjTotal = autoComputeTotal(it, state.rjFinal), isSubmitted = false) }
+                        DcsLogInputField("FINAL", state.rjFinal, palette, Modifier.weight(1f)) { state = state.copy(rjFinal = it, rjTotal = autoComputeTotal(state.rjInitial, it), isSubmitted = false) }
+                        DcsLogInputField("NET TOTAL", state.rjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    }
+                }
+                HorizontalDivider(color = palette.dividerLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+
+                // B. Clear Juice Block
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("B. CLEAR JUICE METRIC BLOCK (M³)", color = TechAccentGreen, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DcsLogInputField("INITIAL", state.cjInitial, palette, Modifier.weight(1f)) { state = state.copy(cjInitial = it, cjTotal = autoComputeTotal(it, state.cjFinal), isSubmitted = false) }
+                        DcsLogInputField("FINAL", state.cjFinal, palette, Modifier.weight(1f)) { state = state.copy(cjFinal = it, cjTotal = autoComputeTotal(state.cjInitial, it), isSubmitted = false) }
+                        DcsLogInputField("NET TOTAL", state.cjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    }
+                }
+                HorizontalDivider(color = palette.dividerLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
+
+                // C. Flocculant Feed Block
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("C. FLOCCULANT FEED PIPELINE (KG)", color = TechWarnOrange, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        DcsLogInputField("INITIAL", state.flocInitial, palette, Modifier.weight(1f)) { state = state.copy(flocInitial = it, flocTotal = autoComputeTotal(it, state.flocFinal), isSubmitted = false) }
+                        DcsLogInputField("FINAL", state.flocFinal, palette, Modifier.weight(1f)) { state = state.copy(flocFinal = it, flocTotal = autoComputeTotal(state.flocInitial, it), isSubmitted = false) }
+                        DcsLogInputField("NET TOTAL", state.flocTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    }
+                }
+            }
+        }
+    }
+
+    val CameraContent = @Composable { modifier: Modifier ->
+        DcsFormSectionCard(title = "SENSORY PROOF VALIDATION WINDOW", icon = Icons.Rounded.Camera, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth().fillMaxHeight().clip(RoundedCornerShape(6.dp))
+                    .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Consist Verification Shutter", fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(text = if (capturedImage != null) "IMAGE VERIFIED ✔" else "Secure visual totalizer log pass.", fontFamily = FontTelemetryMono, color = if (capturedImage != null) TechAccentGreen else palette.textMuted, fontSize = 10.sp)
+                    }
+
+                    if (capturedImage != null) {
+                        Image(
+                            bitmap = capturedImage!!.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(4.dp)).border(1.dp, TechAccentGreen, RoundedCornerShape(4.dp)).clickable { capturedImage = null }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .height(34.dp).width(125.dp).clip(RoundedCornerShape(6.dp))
+                                .background(TechAccentBlue.copy(alpha = 0.15f)).border(1.dp, TechAccentBlue, RoundedCornerShape(6.dp))
+                                .clickable {
+                                    val hasPermission = context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) cameraLauncher.launch(null) else permissionLauncher.launch(Manifest.permission.CAMERA)
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(13.dp))
+                                Text("OPEN PREVIEW", color = TechAccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val AudioContent = @Composable { modifier: Modifier ->
+        DcsFormSectionCard(title = "DCS ANNOTATION AUDIO LOG", icon = Icons.Rounded.Notes, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth().fillMaxHeight().clip(RoundedCornerShape(6.dp))
+                    .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(6.dp))
+                    .padding(10.dp)
+            ) {
+                BasicTextField(
+                    value = state.operatorRemarks, onValueChange = { state = state.copy(operatorRemarks = it, isSubmitted = false) },
+                    textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 13.sp),
+                    cursorBrush = SolidColor(palette.textPrimary), modifier = Modifier.fillMaxSize().padding(end = 36.dp),
+                    decorationBox = { innerTextField ->
+                        if (state.operatorRemarks.isEmpty()) {
+                            Text(text = "TAP MIC KEY AND STATE VALVE ANOMALIES...", color = if (isListening) TechAlarmRed else palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono)
+                        }
+                        innerTextField()
+                    }
+                )
+
+                Box(modifier = Modifier.align(Alignment.BottomEnd)) {
+                    if (isTranslating) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = TechAccentBlue, strokeWidth = 2.dp)
+                    } else {
+                        IconButton(
+                            modifier = Modifier.size(26.dp),
+                            onClick = {
+                                if (!isListening) {
+                                    val hasPermission = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                    if (hasPermission) {
+                                        speechTranslator.startListening(
+                                            onStatusChange = { currentVoiceStatusText = it },
+                                            onListeningStateChange = { isListening = it },
+                                            onTranslatingStateChange = { isTranslating = it },
+                                            onResultReceived = { state = state.copy(operatorRemarks = it, isSubmitted = false) }
+                                        )
+                                    } else {
+                                        (context as? android.app.Activity)?.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 101)
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(imageVector = if (isListening) Icons.Rounded.Mic else Icons.Rounded.MicNone, contentDescription = null, tint = if (isListening) TechAlarmRed else TechAccentBlue, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val SignatureContent = @Composable { modifier: Modifier ->
+        DcsFormSectionCard(title = "OPERATOR SIGNATURE CONTROL WINDOW", icon = Icons.Rounded.Draw, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("DRAW VERIFICATION INTEGRITY TRACE:", color = palette.textPrimary, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "WIPE PANEL", color = TechAlarmRed, fontSize = 10.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black,
+                        modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
                 Box(
                     modifier = Modifier
-                        .height(38.dp).width(220.dp).clip(RoundedCornerShape(50))
-                        .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
-                        .clickable {
-                            if (signaturePoints.isNotEmpty()) {
-                                state = state.copy(isSubmitted = true)
-                                onNavigationCallback()
-                            }
-                        },
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth().weight(1f).padding(top = 4.dp)
+                        .shadow(elevation = 3.dp, shape = RoundedCornerShape(8.dp))
+                        .background(palette.glassFill, RoundedCornerShape(8.dp)).border(1.dp, palette.glassBorder, RoundedCornerShape(8.dp))
                 ) {
-                    Text("COMMIT DATA TRANSFERS", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                    if (signaturePoints.isEmpty()) {
+                        Text(text = "TOUCH AUTHENTICATOR MATRIX ON...", color = palette.textMuted.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontTelemetryMono, modifier = Modifier.align(Alignment.Center))
+                    }
+                    Canvas(
+                        modifier = Modifier.fillMaxSize().pointerInteropFilter { event ->
+                            when (event.action) {
+                                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> { signaturePoints.add(Offset(event.x, event.y)); true }
+                                MotionEvent.ACTION_UP -> { signaturePoints.add(Offset.Unspecified); true }
+                                else -> false
+                            }
+                        }
+                    ) {
+                        if (signaturePoints.size > 1) {
+                            val path = Path()
+                            var first = true
+                            for (point in signaturePoints) {
+                                if (point == Offset.Unspecified) { first = true; continue }
+                                if (first) { path.moveTo(point.x, point.y); first = false } else { path.lineTo(point.x, point.y) }
+                            }
+                            drawPath(path = path, color = palette.textPrimary, style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        }
+                    }
                 }
+            }
+        }
+    }
+
+    val FooterContent = @Composable {
+        val containerModifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = if (isDarkThemeOverride) 0.dp else 2.dp, shape = RoundedCornerShape(10.dp))
+            .background(palette.glassFill, RoundedCornerShape(10.dp))
+            .border(1.dp, palette.glassBorder, RoundedCornerShape(10.dp))
+            .padding(8.dp)
+
+        val statusBadge = @Composable {
+            Box(
+                modifier = Modifier
+                    .height(34.dp).clip(RoundedCornerShape(6.dp))
+                    .background(if (signaturePoints.isNotEmpty()) TechAccentGreen.copy(alpha = 0.12f) else TechAlarmRed.copy(alpha = 0.08f))
+                    .border(1.dp, if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (signaturePoints.isNotEmpty()) "DCS JOURNAL VERIFIED ✔" else "ESIGN REQUIRED ❌",
+                    color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black
+                )
+            }
+        }
+
+        val submitButton = @Composable {
+            Box(
+                modifier = Modifier
+                    .height(38.dp)
+                    .then(if (isPortrait) Modifier.fillMaxWidth() else Modifier.width(220.dp))
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
+                    .clickable {
+                        if (signaturePoints.isNotEmpty()) {
+                            state = state.copy(isSubmitted = true)
+                            onNavigationCallback()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("COMMIT DATA TRANSFERS", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+            }
+        }
+
+        if (isPortrait) {
+            Column(modifier = containerModifier, verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                statusBadge()
+                submitButton()
+            }
+        } else {
+            Row(modifier = containerModifier, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                statusBadge()
+                submitButton()
+            }
+        }
+    }
+
+    // ============================================================================
+    // 🧱 PARENT LAYOUT MANAGER
+    // ============================================================================
+    Box(modifier = Modifier.fillMaxSize().then(structuralBackgroundModifier).padding(14.dp), contentAlignment = Alignment.TopCenter) {
+
+        if (isPortrait) {
+            // 📱 PORTRAIT LAYOUT
+            Column(modifier = Modifier.fillMaxSize()) {
+                HeaderContent()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val scrollState = rememberScrollState()
+                Column(modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    MetricsContent(Modifier.fillMaxWidth().height(160.dp))
+                    HardwareContent(Modifier.fillMaxWidth().height(260.dp))
+                    TotalizerContent(Modifier.fillMaxWidth().height(380.dp))
+                    CameraContent(Modifier.fillMaxWidth().height(140.dp))
+                    AudioContent(Modifier.fillMaxWidth().height(140.dp))
+                    SignatureContent(Modifier.fillMaxWidth().height(220.dp))
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                FooterContent()
+            }
+
+        } else {
+            // 💻 LANDSCAPE LAYOUT
+            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                HeaderContent()
+
+                Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // LEFT COLUMN
+                    Column(modifier = Modifier.weight(1.0f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        MetricsContent(Modifier.weight(1f))
+                        HardwareContent(Modifier.weight(1.1f))
+                    }
+                    // CENTER COLUMN
+                    Column(modifier = Modifier.weight(1.1f).fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+                        TotalizerContent(Modifier.fillMaxSize())
+                    }
+                    // RIGHT COLUMN
+                    Column(modifier = Modifier.weight(1.0f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CameraContent(Modifier.weight(0.6f))
+                        AudioContent(Modifier.weight(0.9f))
+                        SignatureContent(Modifier.weight(1.1f))
+                    }
+                }
+
+                FooterContent()
             }
         }
     }
@@ -539,7 +591,7 @@ private fun HardwareStateBadge(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = title, color = palette.textPrimary, fontFamily = FontTelemetryMono, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(text = title, color = palette.textPrimary, fontFamily = FontTelemetryMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
 
         Box(
             modifier = Modifier
@@ -573,7 +625,7 @@ private fun DcsLogInputField(
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(1.dp))
             BasicTextField(
                 value = value, onValueChange = onValueChange,
@@ -600,7 +652,7 @@ private fun DcsFormSectionCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(icon, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(16.dp))
-            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
+            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(modifier = Modifier.height(8.dp))
         content()

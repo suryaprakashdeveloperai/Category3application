@@ -12,18 +12,22 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.auralis.industrialmesfrontendprototype.screens.MaintenanceTabScreen
-import com.example.category3.process.ui.DefecationDashboardScreen
 
 object AppDestinations {
     const val LOGIN = "login_screen"
     const val WORKFLOW_DASHBOARD = "workflow_dashboard"
     const val DEFECATION_DASHBOARD = "defecation_dashboard"
+    const val VACUUM_PAN_DEDICATED = "vacuum_pan_dedicated"
+
+    const val FLOTATION_CLARIFIER_DEDICATED = "flotation_clarifier_live"
     const val ENERGY_TAB = "energy_tab"
     const val PRODUCTION_TAB = "production_tab"
     const val MAINTENANCE_TAB = "maintenance_tab"
     const val MILLMANUALENTRY = "mill_manual"
     const val MILL_DASHBOARD = "mill_dashboard"
+    const val MILL_DEDICATED = "mill_dedicated"
+    const val DEFECATOR_DEDICATED = "defecator_dedicated"
+    // ← NEW: Live SSE Mill View
     const val FLOTATION_CLARIFIER = "flotation_clarifier"
     const val VACCUM_PAN = "vaccum_pan"
     const val OPEN_PAN = "open_pan"
@@ -31,6 +35,10 @@ object AppDestinations {
     const val QUALITY_CONTROL = "quality_control"
     const val DCS_SCREEN = "dcs_screen"
     const val ADMIN_PANEL = "admin_panel"
+    const val OPENPAN_DASHBOARD = "openpan_dashboard"
+    const val CONCENTRATION_DEDICATED = "concentration_dedicated"
+    const val HMI_LOGIN = "hmi_login"
+    const val HMI_WEB_VIEW = "hmi_web_view"
 }
 
 data class MorphicThemeConfig(
@@ -222,21 +230,82 @@ fun AppNavigation() {
             )
         }
 
-        // ==================== OTHER SCREENS ====================
+        // ==================== NEW DIAGNOSTIC DASHBOARDS ====================
         composable(AppDestinations.DEFECATION_DASHBOARD) {
-            DefecationDashboardScreen(onNavigateToScreen = { targetRoute ->
-                navController.navigate(targetRoute)
-            })
+            DefecationDiagnosticsHubScreen(
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute)
+                }
+            )
         }
 
+        // ─── MILL DASHBOARD (Mock/Carousel UI) ───────────────────────────────
+        composable(AppDestinations.MILL_DASHBOARD) {
+            MillDiagnosticsHubScreen(
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute)
+                }
+            )
+        }
+
+        // ─── MILL DEDICATED (Live SSE UI) ← NEW ──────────────────────────────
+        composable(AppDestinations.MILL_DEDICATED) {
+            MillDedicatedPageScreen(
+                userName = "Operator",
+                userRole = "Shift Engineer",
+                onBack = { navController.popBackStack() },
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute) { launchSingleTop = true }
+                }
+            )
+        }
+
+        composable(AppDestinations.OPENPAN_DASHBOARD) {
+            OpenPanDiagnosticsHubScreen(
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute)
+                }
+            )
+        }
+        // ==================== HMI PORTAL ====================
+        composable(AppDestinations.HMI_LOGIN) {
+            IpLoginScreen(
+                onNavigateToHmi = { targetUrl ->
+                    // IMPORTANT: We MUST URL-encode the IP address before passing it.
+                    // Otherwise, Jetpack Navigation gets confused by the "http://" slashes.
+                    val encodedUrl = java.net.URLEncoder.encode(
+                        targetUrl,
+                        java.nio.charset.StandardCharsets.UTF_8.toString()
+                    )
+                    navController.navigate("${AppDestinations.HMI_WEB_VIEW}?ip=$encodedUrl") {
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = "${AppDestinations.HMI_WEB_VIEW}?ip={ip}",
+            arguments = listOf(
+                navArgument("ip") {
+                    type = NavType.StringType
+                    defaultValue = ""
+                }
+            )
+        ) { backStackEntry ->
+            val encodedIp = backStackEntry.arguments?.getString("ip") ?: ""
+            // Decode the URL back to its original form (e.g. http://192...)
+            val decodedIp = java.net.URLDecoder.decode(
+                encodedIp,
+                java.nio.charset.StandardCharsets.UTF_8.toString()
+            )
+
+            HmiScreen(url = decodedIp)
+        }
+
+        // ==================== LEGACY MANUAL / FORM SCREENS ====================
         composable(AppDestinations.MAINTENANCE_TAB) {
             MaintenanceTabScreen()
-        }
-
-        composable(AppDestinations.MILL_DASHBOARD) {
-            MillDiagnosticsHubScreen(onNavigateToScreen = { targetRoute ->
-                navController.navigate(targetRoute)
-            })
         }
 
         composable(AppDestinations.MILLMANUALENTRY) {
@@ -266,6 +335,47 @@ fun AppNavigation() {
                 onNavigationCallback = { navController.navigate(AppDestinations.WORKFLOW_DASHBOARD) }
             )
         }
+        // ─── DEFECATOR DEDICATED (Live SSE UI) ──────────────────────────────
+        composable(AppDestinations.DEFECATOR_DEDICATED) {
+            DefecatorDedicatedPageScreen(
+                userName = "Operator",
+                userRole = "Shift Engineer",
+                onBack = { navController.popBackStack() },
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute) { launchSingleTop = true }
+                }
+            )
+        }
+        composable(AppDestinations.VACUUM_PAN_DEDICATED) {
+            VacuumPanDedicatedPageScreen(
+                userName = "Operator",
+                userRole = "Shift Engineer",
+                onBack = { navController.popBackStack() },
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute) { launchSingleTop = true }
+                }
+            )
+        }
+        composable(AppDestinations.FLOTATION_CLARIFIER_DEDICATED) {
+            DefecatorDedicatedPageScreen(
+                userName = "Operator",
+                userRole = "Shift Engineer",
+                onBack = { navController.popBackStack() },
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute) { launchSingleTop = true }
+                }
+            )
+        }
+        composable(AppDestinations.CONCENTRATION_DEDICATED) {
+            ConcentrationDedicatedPageScreen(
+                userName = "Operator",
+                userRole = "Shift Engineer",
+                onBack = { navController.popBackStack() },
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute) { launchSingleTop = true }
+                }
+            )
+        }
 
         composable(AppDestinations.POWDER_MAKER) {
             PowderMakerScreen(
@@ -273,6 +383,7 @@ fun AppNavigation() {
                 onNavigationCallback = { navController.navigate(AppDestinations.WORKFLOW_DASHBOARD) }
             )
         }
+
 
         composable(AppDestinations.QUALITY_CONTROL) {
             QualityControlScreen(onNavigationCallback = {

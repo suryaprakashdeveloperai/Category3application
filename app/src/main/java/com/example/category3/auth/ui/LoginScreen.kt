@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.example.category3.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 // 🎨 CORE BRAND COLOR SCHEME
 val MinimalistTextPrimary = Color(0xFF111827)
@@ -156,7 +157,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
         launch { logoVideoScale.animateTo(targetValue = 1f, animationSpec = tween(900, easing = androidx.compose.animation.core.FastOutSlowInEasing)) }
         launch { containerWidthExpansion.animateTo(targetValue = 1f, animationSpec = tween(800, easing = androidx.compose.animation.core.CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f))) }
         launch { globalRevealProgress.animateTo(1f, animationSpec = tween(600, easing = LinearEasing)) }
-        launch { delay(400); formUIAlpha.animateTo(1f, animationSpec = tween(400, easing = LinearEasing)) }
+        launch { delay(400.milliseconds); formUIAlpha.animateTo(1f, animationSpec = tween(400, easing = LinearEasing)) }
     }
 
     Box(
@@ -400,7 +401,15 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                                     username == "7" && password == "7" -> AppDestinations.QUALITY_CONTROL
                                     username == "8" && password == "8" -> AppDestinations.DCS_SCREEN
                                     username == "9" && password == "9" -> AppDestinations.MILL_DASHBOARD
-                                    username == "11" && password == "11" -> AppDestinations.ADMIN_PANEL   // ← NEW
+                                    username == "10" && password == "10" -> AppDestinations.OPENPAN_DASHBOARD
+                                    username == "11" && password == "11" -> AppDestinations.ADMIN_PANEL
+                                    username == "12" && password == "12" -> AppDestinations.MILL_DEDICATED
+                                    username == "13" && password == "13" -> AppDestinations.DEFECATOR_DEDICATED
+                                    username == "14" && password == "14" -> AppDestinations.FLOTATION_CLARIFIER_DEDICATED
+                                    username == "15" && password == "15" -> AppDestinations.CONCENTRATION_DEDICATED
+                                    username == "16" && password == "16" -> AppDestinations.VACUUM_PAN_DEDICATED
+                                    //
+                                    // ← NEW
                                     else -> null
                                 }
 

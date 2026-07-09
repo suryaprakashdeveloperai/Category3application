@@ -79,7 +79,7 @@ class ProductionViewModel : ViewModel() {
     private var reconnectJob: Job? = null
     private val gson = Gson()
 
-    private val SSE_URL = "https://sit-sims-cloudy-encourages.trycloudflare.com/stream"
+    private val SSE_URL = "https://rounds-clicks-nutten-put.trycloudflare.com/stream"
     private val sseClient = createInsecureSseClient()
 
     init { startStream() }

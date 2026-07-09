@@ -179,10 +179,10 @@ fun KpiType.toColor(): Color = when (this) {
 }
 
 // ============================================================================
-// 🧊 GLASS CARD
+// 🧊 GLASS CARD (Renamed to avoid conflict with duplicate elsewhere)
 // ============================================================================
 @Composable
-fun GreyFrostGlassCard(
+fun MillGreyFrostGlassCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(24.dp),
     content: @Composable BoxScope.() -> Unit
@@ -191,8 +191,22 @@ fun GreyFrostGlassCard(
         modifier = modifier
             .shadow(12.dp, shape, spotColor = Color(0xFF8A9AAB).copy(0.5f), ambientColor = Color(0xFF8A9AAB).copy(0.2f))
             .clip(shape)
-            .background(Brush.linearGradient(listOf(Color.White.copy(0.65f), Color(0xFFC9D4E2).copy(0.4f)), Offset.Zero, Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)))
-            .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(0.9f), Color(0xFFA5B4C7).copy(0.3f)), Offset.Zero, Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)), shape),
+            .background(
+                Brush.linearGradient(
+                    listOf(Color.White.copy(0.65f), Color(0xFFC9D4E2).copy(0.4f)),
+                    Offset.Zero,
+                    Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                )
+            )
+            .border(
+                1.dp,
+                Brush.linearGradient(
+                    listOf(Color.White.copy(0.9f), Color(0xFFA5B4C7).copy(0.3f)),
+                    Offset.Zero,
+                    Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
+                ),
+                shape
+            ),
         content = content
     )
 }
@@ -260,12 +274,12 @@ fun TopNavigationBar(userName: String, userRole: String, onAction: (String) -> U
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            GreyFrostGlassCard(shape = CircleShape) {
+            MillGreyFrostGlassCard(shape = CircleShape) {
                 Box(modifier = Modifier.size(44.dp).padding(8.dp), contentAlignment = Alignment.Center) {
                     Icon(Icons.Rounded.Person, null, tint = TextGray)
                 }
             }
-            GreyFrostGlassCard(shape = RoundedCornerShape(24.dp)) {
+            MillGreyFrostGlassCard(shape = RoundedCornerShape(24.dp)) {
                 Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("Mill Section", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     Icon(Icons.Filled.ArrowDropDown, null, tint = TextDark)
@@ -273,7 +287,7 @@ fun TopNavigationBar(userName: String, userRole: String, onAction: (String) -> U
             }
         }
 
-        GreyFrostGlassCard(shape = RoundedCornerShape(32.dp)) {
+        MillGreyFrostGlassCard(shape = RoundedCornerShape(32.dp)) {
             Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 tabs.forEachIndexed { index, tab ->
                     TopNavLink(text = tab, isActive = activeTab == index, onClick = { activeTab = index })
@@ -304,10 +318,17 @@ fun TopNavigationBar(userName: String, userRole: String, onAction: (String) -> U
                     )
                 }
             }
-            GreyFrostGlassCard(shape = CircleShape) {
+            MillGreyFrostGlassCard(shape = CircleShape) {
                 Box(modifier = Modifier.size(44.dp), contentAlignment = Alignment.Center) {
                     Icon(Icons.Outlined.Notifications, null, tint = TextDark)
-                    Box(modifier = Modifier.align(Alignment.TopEnd).offset((-10).dp, 10.dp).size(8.dp).background(AccentOrange, CircleShape).border(1.5.dp, Color.White, CircleShape))
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset((-10).dp, 10.dp)
+                            .size(8.dp)
+                            .background(AccentOrange, CircleShape)
+                            .border(1.5.dp, Color.White, CircleShape)
+                    )
                 }
             }
         }
@@ -323,7 +344,12 @@ fun TopNavLink(text: String, isActive: Boolean, onClick: () -> Unit) {
             .background(if (isActive) Color.White.copy(0.6f) else Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Text(text, fontSize = 13.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium, color = if (isActive) TextDark else TextGray)
+        Text(
+            text,
+            fontSize = 13.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+            color = if (isActive) TextDark else TextGray
+        )
     }
 }
 
@@ -335,7 +361,7 @@ fun MillMotorSection(state: MillDashboardState, modifier: Modifier = Modifier) {
     var selectedMotorIndex by remember { mutableIntStateOf(0) }
     val activeMotor = state.motors.getOrNull(selectedMotorIndex)
 
-    GreyFrostGlassCard(modifier = modifier) {
+    MillGreyFrostGlassCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
 
             // ── HEADER BLOCK ─────────────────────────────────────────────────
@@ -343,11 +369,19 @@ fun MillMotorSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Mill Section", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
                     Spacer(Modifier.width(12.dp))
-                    GreyFrostGlassCard(shape = RoundedCornerShape(12.dp)) {
-                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MillGreyFrostGlassCard(shape = RoundedCornerShape(12.dp)) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(Modifier.size(8.dp).background(state.sectionStatus.toColor(), CircleShape))
                             Spacer(Modifier.width(6.dp))
-                            Text(state.sectionStatus.name.lowercase().replaceFirstChar { it.uppercase() }, fontSize = 12.sp, color = state.sectionStatus.toColor(), fontWeight = FontWeight.Bold)
+                            Text(
+                                state.sectionStatus.name.lowercase().replaceFirstChar { it.uppercase() },
+                                fontSize = 12.sp,
+                                color = state.sectionStatus.toColor(),
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -436,15 +470,11 @@ fun BottomImageArcCarousel(
     onItemSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Threshold required to register a swipe (about 40dp converted to pixels)
     val swipeThreshold = LocalDensity.current.run { 40.dp.toPx() }
     var dragOffset by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = modifier
-            // ── ADDED POINTER INPUT FOR DRAGGING ────────────────────────────
-            // Keying on selectedIndex prevents double-skips during a fast fling
-            // by cancelling the gesture evaluation as soon as the index changes.
             .pointerInput(selectedIndex) {
                 detectHorizontalDragGestures(
                     onDragEnd = { dragOffset = 0f },
@@ -453,11 +483,9 @@ fun BottomImageArcCarousel(
                         change.consume()
                         dragOffset += dragAmount
                         if (dragOffset > swipeThreshold) {
-                            // Swipe Right -> View Previous
                             if (selectedIndex > 0) onItemSelected(selectedIndex - 1)
                             dragOffset = 0f
                         } else if (dragOffset < -swipeThreshold) {
-                            // Swipe Left -> View Next
                             if (selectedIndex < motors.size - 1) onItemSelected(selectedIndex + 1)
                             dragOffset = 0f
                         }
@@ -524,10 +552,9 @@ fun BottomImageArcCarousel(
         val itemSizeActive = 68.dp
         val itemSizeInactive = 44.dp
 
-        // ── UPGRADED ANIMATION SPECS TO SPRINGS FOR SMOOTHER DRAG FEEL ─────
         val springSpec = spring<Float>(
-            dampingRatio = 0.8f, // slight bounce
-            stiffness = Spring.StiffnessLow // soft transition
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessLow
         )
 
         motors.forEachIndexed { index, motor ->
@@ -617,7 +644,7 @@ fun FloatingStatusCard(
     title: String, value: String, statusText: String, statusColor: Color,
     modifier: Modifier = Modifier, isBlueIcon: Boolean = false
 ) {
-    GreyFrostGlassCard(modifier = modifier, shape = RoundedCornerShape(16.dp)) {
+    MillGreyFrostGlassCard(modifier = modifier, shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(title, fontSize = 11.sp, color = TextGray, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(6.dp))
@@ -650,12 +677,19 @@ fun FloatingStatusCard(
 @Composable
 fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        GreyFrostGlassCard(modifier = Modifier.weight(1.3f).fillMaxWidth()) {
+        MillGreyFrostGlassCard(modifier = Modifier.weight(1.3f).fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("Overview", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
-                    GreyFrostGlassCard(shape = RoundedCornerShape(12.dp)) {
-                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    MillGreyFrostGlassCard(shape = RoundedCornerShape(12.dp)) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text("Today", fontSize = 12.sp, color = TextDark, fontWeight = FontWeight.Bold)
                             Icon(Icons.Filled.ArrowDropDown, null, tint = TextDark, modifier = Modifier.size(16.dp))
                         }
@@ -671,9 +705,18 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                             val rOuter = minOf(w / 2f, h) * 0.95f
                             val rMid = rOuter * 0.7f; val rInner = rOuter * 0.4f
 
-                            drawArc(AccentOrangeLight, 180f, 180f, true, Offset(cx - rOuter, cy - rOuter), Size(rOuter * 2, rOuter * 2))
-                            drawArc(Color(0xFFFFB3A1).copy(0.6f), 180f, 180f, true, Offset(cx - rMid, cy - rMid), Size(rMid * 2, rMid * 2))
-                            drawArc(Color.White, 180f, 180f, true, Offset(cx - rInner, cy - rInner), Size(rInner * 2, rInner * 2))
+                            drawArc(
+                                AccentOrangeLight, 180f, 180f, true,
+                                Offset(cx - rOuter, cy - rOuter), Size(rOuter * 2, rOuter * 2)
+                            )
+                            drawArc(
+                                Color(0xFFFFB3A1).copy(0.6f), 180f, 180f, true,
+                                Offset(cx - rMid, cy - rMid), Size(rMid * 2, rMid * 2)
+                            )
+                            drawArc(
+                                Color.White, 180f, 180f, true,
+                                Offset(cx - rInner, cy - rInner), Size(rInner * 2, rInner * 2)
+                            )
 
                             val dot = 3.dp.toPx()
                             drawCircle(AccentOrange, dot, Offset(cx, cy - rOuter))
@@ -686,9 +729,18 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                             val v2 = "${state.chartData.targetThroughput / 1000}K+"
                             val v3 = "${(state.chartData.targetThroughput * 0.2).toInt() / 1000}K+"
 
-                            drawText(textMeasurer, v1, style = lbl, topLeft = Offset(cx - textMeasurer.measure(v1, lbl).size.width / 2f, cy - rOuter - 20f))
-                            drawText(textMeasurer, v2, style = lbl, topLeft = Offset(cx - textMeasurer.measure(v2, lbl).size.width / 2f, cy - rMid - 20f))
-                            drawText(textMeasurer, v3, style = lbl, topLeft = Offset(cx - textMeasurer.measure(v3, lbl).size.width / 2f, cy - rInner - 20f))
+                            drawText(
+                                textMeasurer, v1, style = lbl,
+                                topLeft = Offset(cx - textMeasurer.measure(v1, lbl).size.width / 2f, cy - rOuter - 20f)
+                            )
+                            drawText(
+                                textMeasurer, v2, style = lbl,
+                                topLeft = Offset(cx - textMeasurer.measure(v2, lbl).size.width / 2f, cy - rMid - 20f)
+                            )
+                            drawText(
+                                textMeasurer, v3, style = lbl,
+                                topLeft = Offset(cx - textMeasurer.measure(v3, lbl).size.width / 2f, cy - rInner - 20f)
+                            )
                             drawText(textMeasurer, "2023", style = ax, topLeft = Offset(cx - rOuter - 16f, cy + 12.dp.toPx()))
                             drawText(textMeasurer, "2024", style = ax, topLeft = Offset(cx - 16f, cy + 12.dp.toPx()))
                             drawText(textMeasurer, "2025", style = ax, topLeft = Offset(cx + rOuter - 16f, cy + 12.dp.toPx()))
@@ -705,7 +757,7 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
             }
         }
 
-        GreyFrostGlassCard(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        MillGreyFrostGlassCard(modifier = Modifier.fillMaxWidth().weight(1f)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Section Status", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextDark)
@@ -771,11 +823,18 @@ fun KpiCard(modifier: Modifier, data: KpiDataMill) {
         animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "pulse"
     )
 
-    GreyFrostGlassCard(modifier = modifier) {
+    MillGreyFrostGlassCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(30.dp).background(accentColor.copy(0.15f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                    Box(
+                        Modifier.size(30.dp).background(accentColor.copy(0.15f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(data.type.toIcon(), null, tint = accentColor, modifier = Modifier.size(16.dp))
                     }
                     Spacer(Modifier.width(8.dp))
@@ -791,7 +850,12 @@ fun KpiCard(modifier: Modifier, data: KpiDataMill) {
             Text(data.value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (data.isUpwardTrend) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward, null, tint = if (data.isUpwardTrend) StatusGreen else AccentOrange, modifier = Modifier.size(12.dp))
+                Icon(
+                    if (data.isUpwardTrend) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
+                    null,
+                    tint = if (data.isUpwardTrend) StatusGreen else AccentOrange,
+                    modifier = Modifier.size(12.dp)
+                )
                 Text(" ${data.changeString} vs Yesterday", fontSize = 10.sp, color = TextGray)
             }
             Spacer(Modifier.height(12.dp))

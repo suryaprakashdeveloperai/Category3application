@@ -1,12 +1,17 @@
 package com.example.category3.auth.ui
 
 import android.content.res.Configuration
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,44 +22,83 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Factory
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.components.RadialAppBar
 
+// --- Light Theme Colors ---
+private val BgLight = Color(0xFFF3F4F6)
+private val CardWhite = Color(0xFFFFFFFF)
+//private val TextDark = Color(0xFF1F2937)
+//private val TextGray = Color(0xFF6B7280)
+private val PurpleMain = Color(0xFF8B5CF6)
+private val PurpleLight = Color(0xFFC4B5FD)
+private val BlueAccent = Color(0xFF3B82F6)
+private val GreenSuccess = Color(0xFF10B981)
+private val RedDanger = Color(0xFFEF4444)
+private val AmberWarning = Color(0xFFF59E0B)
+
 @Composable
 fun ProductionTabScreen(
     dashboardViewModel: DashboardViewModel,
     onNavigateToScreen: (String) -> Unit,
+    initialAlertId: String? = null,
     viewModel: ProductionViewModel = viewModel(factory = ProductionViewModel.provideFactory())
 ) {
-    val theme = getAdaptiveTheme(false)
-    val bgBrush = if (theme.isDark) Brush.linearGradient(listOf(BrandDeepNavy, BrandDarkBlueGray))
-    else Brush.linearGradient(listOf(BrandOffWhite, Color.White))
-
-    val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
-
     val kpis by viewModel.kpis.collectAsStateWithLifecycle()
-    val connectionStatus by viewModel.connectionStatus.collectAsStateWithLifecycle()
     val activeProdAlerts by viewModel.activeProductionAlerts.collectAsStateWithLifecycle()
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    // Bridge -> Dashboard
+    var selectedAlertDetail by remember { mutableStateOf<ProductionAlertEvent?>(null) }
+    var hasHandledInitialAlert by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(activeProdAlerts, initialAlertId) {
+        if (initialAlertId != null && !hasHandledInitialAlert && activeProdAlerts.isNotEmpty()) {
+            val targetAlert = activeProdAlerts.find { it.id == initialAlertId }
+            if (targetAlert != null) {
+                selectedAlertDetail = targetAlert
+                hasHandledInitialAlert = true
+            }
+        }
+    }
+
     LaunchedEffect(activeProdAlerts) {
         dashboardViewModel.syncProductionAlerts(activeProdAlerts.map { it.id }.toSet())
     }
@@ -62,144 +106,635 @@ fun ProductionTabScreen(
         viewModel.productionAlerts.collect { p ->
             dashboardViewModel.injectProductionAlert(
                 AlertData(
-                    id = p.id, stage = p.stage, message = p.message,
-                    priority = p.priority, type = p.type, description = p.description,
-                    sourceRoute = "production_tab", timestamp = p.timestamp,
-                    targetSection = p.stage, targetAlertId = p.id, acknowledged = p.acknowledged
+                    id = p.id, stage = p.stage, message = p.message, priority = p.priority,
+                    type = p.type, description = p.description, sourceRoute = "production_tab",
+                    timestamp = p.timestamp, targetSection = p.stage, targetAlertId = p.id,
+                    acknowledged = p.acknowledged
                 )
             )
         }
     }
 
     fun kpi(id: String) = kpis.firstOrNull { it.id == id }
-    fun statusColor(k: ProductionKpi?, normal: Color = AccentPrimary): Color = when (k?.status) {
-        KpiStatus.WARNING -> AccentWarning
-        KpiStatus.CRITICAL -> AccentCritical
-        KpiStatus.NORMAL -> normal
-        null -> theme.textMuted
-    }
 
-    @Composable fun GlobalThroughputPanel(m: Modifier) {
-        val gt = kpi("global_throughput")
-        CleanPanel(theme, m) {
-            Row(Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(48.dp).background(AccentPrimary.copy(0.2f), CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Rounded.Factory, null, tint = AccentPrimary, modifier = Modifier.size(28.dp))
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BgLight)
+                .padding(start = 56.dp, top = 16.dp, end = 24.dp, bottom = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (isLandscape) {
+                Row(Modifier.fillMaxWidth().height(200.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    MainChartCard(modifier = Modifier.weight(2f), kpi = kpi("global_throughput"))
+                    GaugeCard(modifier = Modifier.weight(1f), kpi = kpi("target_achieved"))
                 }
-                Spacer(Modifier.width(16.dp))
-                Column {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("GLOBAL THROUGHPUT", color = theme.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.width(8.dp))
-                        Text(connectionStatus, color = theme.textMuted, fontSize = 10.sp)
-                    }
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(gt?.displayValue ?: "--", color = theme.textMain, fontSize = 32.sp, fontWeight = FontWeight.Black)
-                        Text(" ${gt?.unit ?: "MT/Day"}", color = AccentPrimary, fontSize = 16.sp, modifier = Modifier.padding(bottom = 4.dp))
-                    }
-                }
-            }
-        }
-    }
-
-    @Composable fun SimpleKpiPanel(m: Modifier, id: String, title: String, defUnit: String, normal: Color) {
-        val k = kpi(id)
-        CleanPanel(theme, m) { KpiCell(theme, title, k?.displayValue ?: "--", k?.unit ?: defUnit, statusColor(k, normal)) }
-    }
-
-    @Composable fun RiskPanel(m: Modifier) {
-        val k = kpi("bottleneck_risk")
-        val risk = k?.displayValue ?: "--"
-        val c = when (risk.lowercase()) { "low" -> AccentSuccess; "medium" -> AccentWarning; "high" -> AccentCritical; else -> theme.textMuted }
-        CleanPanel(theme, m) { KpiCell(theme, "Bottleneck Risk", risk, "", c) }
-    }
-
-    @Composable fun SectionPanel(m: Modifier, title: String, rows: List<Triple<String, String, Color>>) {
-        CleanPanel(theme, m) {
-            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.SpaceBetween) {
-                Text(title, color = theme.textMain, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                rows.forEach { (label, valUnit, color) ->
-                    val parts = valUnit.split("§")
-                    KpiRow(theme, label, parts.getOrElse(0) { "--" }, parts.getOrElse(1) { "" }, color)
-                }
-            }
-        }
-    }
-
-    fun row(id: String, label: String, defUnit: String, normal: Color = AccentPrimary): Triple<String, String, Color> {
-        val k = kpi(id)
-        return Triple(label, "${k?.displayValue ?: "--"}§${k?.unit ?: defUnit}", statusColor(k, normal))
-    }
-
-    Box(Modifier.fillMaxSize().background(bgBrush)) {
-        val content: @Composable (Boolean) -> Unit = { portrait ->
-            if (portrait) {
-                Column(
-                    Modifier.fillMaxSize().padding(start = 64.dp, top = 16.dp, end = 16.dp, bottom = 16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    GlobalThroughputPanel(Modifier.fillMaxWidth().height(110.dp))
-                    Row(Modifier.fillMaxWidth().height(110.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SimpleKpiPanel(Modifier.weight(1f).fillMaxHeight(), "target_achieved", "Target", "%", AccentSuccess)
-                        SimpleKpiPanel(Modifier.weight(1f).fillMaxHeight(), "overall_yield", "Yield", "%", AccentPrimary)
-                        RiskPanel(Modifier.weight(1f).fillMaxHeight())
-                    }
-                    SectionPanel(Modifier.fillMaxWidth().height(160.dp), "CANE & MILLING",
-                        listOf(row("milling_throughput", "Cane Crushed", "T/hr"), row("cane_stock", "Cane Stock", "%", AccentSuccess)))
-                    SectionPanel(Modifier.fillMaxWidth().height(200.dp), "CLARIFICATION",
-                        listOf(row("raw_juice_flow", "Raw Juice", "T/hr"), row("raw_juice_temp", "Temp", "°C"),
-                            row("defecator_ph", "pH", "pH", AccentSuccess), row("clear_juice_tank_level", "CJ Tank", "%")))
-                    SectionPanel(Modifier.fillMaxWidth().height(200.dp), "EVAPORATION",
-                        listOf(row("evap_body1_temp", "Body1 Temp", "°C"), row("evap_b4_vac", "Vac B4", "mmHg"),
-                            row("evap_b5_vac", "Vac B5", "mmHg"), row("evap_b5_brix", "Brix", "Bx", AccentSuccess)))
-                    SectionPanel(Modifier.fillMaxWidth().height(200.dp), "CONCENTRATION & PANS",
-                        listOf(row("fce_brix", "FCE Brix", "Bx", AccentSuccess), row("fce_vacuum", "FCE Vac", "mmHg"),
-                            row("opan_running", "Pans", "Nos"), row("opan_avg_temp", "Pan Temp", "°C")))
-                    SectionPanel(Modifier.fillMaxWidth().height(200.dp), "PRODUCTION",
-                        listOf(row("total_produced", "Total", "kg"), row("batches_completed", "Batches", ""),
-                            row("yield_efficiency", "Yield", "%", AccentSuccess), row("shift", "Shift", "")))
-                    Spacer(Modifier.height(32.dp))
+                Row(Modifier.fillMaxWidth().height(160.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    AreaChartCard(modifier = Modifier.weight(1f), kpi = kpi("overall_yield"))
+                    BarChartCard(modifier = Modifier.weight(1f), kpi = kpi("milling_throughput"))
+                    DonutChartCard(modifier = Modifier.weight(1f), kpi = kpi("cane_stock"))
                 }
             } else {
-                Column(
-                    Modifier.fillMaxSize().padding(start = 76.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(Modifier.fillMaxWidth().weight(0.8f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlobalThroughputPanel(Modifier.weight(1.5f).fillMaxHeight())
-                        SimpleKpiPanel(Modifier.weight(1f).fillMaxHeight(), "target_achieved", "Target", "%", AccentSuccess)
-                        SimpleKpiPanel(Modifier.weight(1f).fillMaxHeight(), "overall_yield", "Yield", "%", AccentPrimary)
-                        RiskPanel(Modifier.weight(1f).fillMaxHeight())
-                    }
-                    Row(Modifier.fillMaxWidth().weight(1.5f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SectionPanel(Modifier.weight(1f).fillMaxHeight(), "CANE & MILLING",
-                            listOf(row("milling_throughput", "Cane Crushed", "T/hr"), row("cane_stock", "Cane Stock", "%", AccentSuccess)))
-                        SectionPanel(Modifier.weight(1f).fillMaxHeight(), "CLARIFICATION",
-                            listOf(row("raw_juice_flow", "Raw Juice", "T/hr"), row("raw_juice_temp", "Temp", "°C"),
-                                row("defecator_ph", "pH", "pH", AccentSuccess), row("clear_juice_tank_level", "CJ Tank", "%")))
-                        SectionPanel(Modifier.weight(1f).fillMaxHeight(), "EVAPORATION",
-                            listOf(row("evap_body1_temp", "Body1 Temp", "°C"), row("evap_b4_vac", "Vac B4", "mmHg"),
-                                row("evap_b5_vac", "Vac B5", "mmHg"), row("evap_b5_brix", "Brix", "Bx", AccentSuccess)))
-                    }
-                    Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SectionPanel(Modifier.weight(1f).fillMaxHeight(), "CONCENTRATION & PANS",
-                            listOf(row("fce_brix", "FCE Brix", "Bx", AccentSuccess), row("fce_vacuum", "FCE Vac", "mmHg"),
-                                row("opan_running", "Pans", "Nos"), row("opan_avg_temp", "Pan Temp", "°C")))
-                        SectionPanel(Modifier.weight(1f).fillMaxHeight(), "PRODUCTION",
-                            listOf(row("total_produced", "Total", "kg"), row("yield_efficiency", "Yield", "%", AccentSuccess),
-                                row("shift", "Shift", ""), row("maintenance", "Maint", "")))
-                    }
+                MainChartCard(modifier = Modifier.fillMaxWidth().height(200.dp), kpi = kpi("global_throughput"))
+                Row(Modifier.fillMaxWidth().height(160.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    GaugeCard(modifier = Modifier.weight(1f), kpi = kpi("target_achieved"))
+                    AreaChartCard(modifier = Modifier.weight(1f), kpi = kpi("overall_yield"))
+                }
+                Row(Modifier.fillMaxWidth().height(160.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    BarChartCard(modifier = Modifier.weight(1f), kpi = kpi("milling_throughput"))
+                    DonutChartCard(modifier = Modifier.weight(1f), kpi = kpi("cane_stock"))
                 }
             }
+
+            if (activeProdAlerts.isNotEmpty()) {
+                ProductionAlertsTable(
+                    alerts = activeProdAlerts,
+                    onAcknowledge = { viewModel.acknowledgeAlert(it.id) },
+                    onAlertClick = { selectedAlertDetail = it }
+                )
+            }
+
+            OverviewTable(modifier = Modifier.fillMaxWidth(), kpis = kpis)
         }
 
-        content(isPortrait)
+        selectedAlertDetail?.let { alert ->
+            ProductionAlertDialog(
+                alert = alert,
+                onDismiss = { selectedAlertDetail = null },
+                onAcknowledge = {
+                    viewModel.acknowledgeAlert(alert.id)
+                    selectedAlertDetail = null
+                }
+            )
+        }
 
+        // Overlay Navigation (Left side, matching Energy tab behavior)
         RadialAppBar(
-            modifier = Modifier.align(Alignment.CenterStart).offset(x = (-8).dp).zIndex(30f),
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = (-8).dp)
+                .zIndex(30f),
             activeSection = "production_tab",
             onActionSelected = { onNavigateToScreen(it) }
         )
     }
 }
+
+@Composable
+private fun ProductionAlertsTable(
+    alerts: List<ProductionAlertEvent>,
+    onAcknowledge: (ProductionAlertEvent) -> Unit,
+    onAlertClick: (ProductionAlertEvent) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(8.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.05f)),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp).fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Active Alerts Log", color = RedDanger, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "${alerts.count { !it.acknowledged }} Active",
+                    color = TextGray,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                Text("STAGE", color = TextGray, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                Text("ISSUE", color = TextGray, fontSize = 10.sp, modifier = Modifier.weight(2f))
+                Text("VALUE/TH", color = TextGray, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                Text("ACTION", color = TextGray, fontSize = 10.sp, modifier = Modifier.width(90.dp))
+            }
+
+            val sortedAlerts = alerts.sortedBy { it.acknowledged }
+            sortedAlerts.forEach { alert ->
+                val isAck = alert.acknowledged
+                val rowColor = if (isAck) TextGray else when (alert.priority) {
+                    "CRITICAL" -> RedDanger
+                    "WARNING" -> AmberWarning
+                    else -> BlueAccent
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .background(
+                            if (isAck) Color.Transparent else rowColor.copy(alpha = 0.05f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .border(
+                            1.dp,
+                            if (isAck) Color.Transparent else rowColor.copy(alpha = 0.2f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable(enabled = !isAck) { onAlertClick(alert) }
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        alert.stage,
+                        color = if (isAck) TextGray else TextDark,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        alert.message,
+                        color = if (isAck) TextGray else rowColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(2f)
+                    )
+                    Text(
+                        String.format("%.0f / %.0f", alert.currentValue, alert.thresholdValue),
+                        color = if (isAck) TextGray else TextDark,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (!isAck) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .width(90.dp)
+                                .background(rowColor, RoundedCornerShape(6.dp))
+                                .clickable { onAcknowledge(alert) }
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Text(
+                                "ACKNOWLEDGE",
+                                color = Color.White,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.width(90.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.CheckCircle,
+                                null,
+                                tint = TextGray,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "ACK'D",
+                                color = TextGray,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProductionAlertDialog(
+    alert: ProductionAlertEvent,
+    onDismiss: () -> Unit,
+    onAcknowledge: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Card(
+                modifier = Modifier.width(400.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = CardWhite),
+                elevation = CardDefaults.cardElevation(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    val alertColor = when (alert.priority) {
+                        "CRITICAL" -> RedDanger
+                        "WARNING" -> AmberWarning
+                        else -> BlueAccent
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.WarningAmber,
+                                null,
+                                tint = alertColor,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Column {
+                                Text(
+                                    "PRODUCTION ALERT",
+                                    color = alertColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    alert.stage,
+                                    color = TextDark,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.Rounded.Close, null, tint = TextGray)
+                        }
+                    }
+                    Text(
+                        alert.message,
+                        color = TextDark,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(alertColor.copy(0.1f), RoundedCornerShape(8.dp))
+                            .padding(12.dp)
+                    ) {
+                        Text(
+                            "Threshold Details",
+                            color = alertColor,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Threshold Limit: ${String.format("%.2f", alert.thresholdValue)}",
+                            color = TextDark,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            "Current Reading: ${String.format("%.2f", alert.currentValue)}",
+                            color = TextDark,
+                            fontSize = 14.sp
+                        )
+                    }
+
+                    Text(alert.description, color = TextGray, fontSize = 14.sp)
+
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Text(
+                            "Acknowledge Issue",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .background(alertColor, RoundedCornerShape(8.dp))
+                                .clickable { onAcknowledge() }
+                                .padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardCard(modifier: Modifier = Modifier, title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        modifier = modifier.shadow(
+            elevation = 8.dp,
+            shape = RoundedCornerShape(20.dp),
+            spotColor = Color.Black.copy(alpha = 0.05f)
+        ),
+        colors = CardDefaults.cardColors(containerColor = CardWhite),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp).fillMaxSize()) {
+            Text(title, color = TextGray, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(8.dp))
+            content()
+        }
+    }
+}
+
+@Composable
+fun MainChartCard(modifier: Modifier, kpi: ProductionKpi?) {
+    DashboardCard(modifier, "Global Throughput Trend") {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                kpi?.displayValue ?: "--",
+                color = TextDark,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                " ${kpi?.unit ?: "MT/Day"}",
+                color = TextGray,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val path = Path()
+            val points = listOf(0.4f, 0.3f, 0.6f, 0.5f, 0.8f, 0.6f, 0.9f, 0.7f, 0.85f, 1.0f)
+            val stepX = size.width / (points.size - 1)
+
+            points.forEachIndexed { index, y ->
+                val px = index * stepX
+                val py = size.height - (y * size.height)
+                if (index == 0) path.moveTo(px, py) else path.lineTo(px, py)
+            }
+            drawPath(path, color = PurpleMain, style = Stroke(width = 4.dp.toPx()))
+        }
+    }
+}
+
+@Composable
+fun GaugeCard(modifier: Modifier, kpi: ProductionKpi?) {
+    DashboardCard(modifier, "Target Achieved") {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                val stroke = 12.dp.toPx()
+                drawArc(
+                    color = BgLight,
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+                drawArc(
+                    color = BlueAccent,
+                    startAngle = 180f,
+                    sweepAngle = 180f * 0.85f,
+                    useCenter = false,
+                    style = Stroke(stroke, cap = StrokeCap.Round)
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.offset(y = 16.dp)
+            ) {
+                Text(
+                    kpi?.displayValue ?: "85",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+                Text("%", fontSize = 12.sp, color = TextGray)
+            }
+        }
+    }
+}
+
+@Composable
+fun AreaChartCard(modifier: Modifier, kpi: ProductionKpi?) {
+    DashboardCard(modifier, "Overall Yield Trend") {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "${kpi?.displayValue ?: "--"} ${kpi?.unit ?: "%"}",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextDark
+            )
+            Text("+2.4%", color = GreenSuccess, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+        Canvas(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+            val path = Path()
+            path.moveTo(0f, size.height)
+            path.lineTo(0f, size.height * 0.5f)
+            path.lineTo(size.width * 0.5f, size.height * 0.2f)
+            path.lineTo(size.width, size.height * 0.6f)
+            path.lineTo(size.width, size.height)
+            path.close()
+            drawPath(
+                path,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        PurpleLight.copy(alpha = 0.5f),
+                        Color.Transparent
+                    )
+                )
+            )
+
+            val linePath = Path()
+            linePath.moveTo(0f, size.height * 0.5f)
+            linePath.lineTo(size.width * 0.5f, size.height * 0.2f)
+            linePath.lineTo(size.width, size.height * 0.6f)
+            drawPath(linePath, color = PurpleMain, style = Stroke(width = 3.dp.toPx()))
+        }
+    }
+}
+
+@Composable
+fun BarChartCard(modifier: Modifier, kpi: ProductionKpi?) {
+    DashboardCard(modifier, "Milling Throughput") {
+        Text(
+            "${kpi?.displayValue ?: "--"} ${kpi?.unit ?: "T/hr"}",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextDark
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            val heights = listOf(0.4f, 0.7f, 0.5f, 0.9f, 0.6f, 0.8f)
+            heights.forEach { h ->
+                Box(
+                    modifier = Modifier
+                        .width(12.dp)
+                        .fillMaxHeight(h)
+                        .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
+                        .background(PurpleLight)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DonutChartCard(modifier: Modifier, kpi: ProductionKpi?) {
+    DashboardCard(modifier, "Cane Stock") {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(1f)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                    val stroke = 12.dp.toPx()
+                    drawArc(PurpleMain, 0f, 120f, false, style = Stroke(stroke))
+                    drawArc(BlueAccent, 120f, 160f, false, style = Stroke(stroke))
+                    drawArc(BgLight, 280f, 80f, false, style = Stroke(stroke))
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                LegendItem(PurpleMain, "High Yld")
+                LegendItem(BlueAccent, "Standard")
+                LegendItem(BgLight, "Low Yld")
+            }
+        }
+    }
+}
+
+@Composable
+fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(8.dp).background(color, CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = TextGray, fontSize = 10.sp)
+    }
+}
+
+@Composable
+fun OverviewTable(modifier: Modifier, kpis: List<ProductionKpi>) {
+    val tableRows = listOf(
+        TableRowData("Raw Juice", "Clarification", "raw_juice_flow", "T/hr"),
+        TableRowData("pH Level", "Clarification", "defecator_ph", "pH"),
+        TableRowData("Evap Body 1", "Evaporation", "evap_body1_temp", "°C"),
+        TableRowData("FCE Brix", "Concentration", "fce_brix", "Bx"),
+        TableRowData("Total Produced", "Production", "total_produced", "kg")
+    )
+
+    Card(
+        modifier = modifier.shadow(
+            8.dp,
+            RoundedCornerShape(20.dp),
+            spotColor = Color.Black.copy(alpha = 0.05f)
+        ),
+        colors = CardDefaults.cardColors(containerColor = CardWhite)
+    ) {
+        Column(modifier = Modifier.padding(24.dp).fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Factory Overview",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+                Text("See All", color = BlueAccent, fontSize = 14.sp)
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+                Text(
+                    "Metric",
+                    modifier = Modifier.weight(2f),
+                    color = TextGray,
+                    fontSize = 12.sp
+                )
+                Text(
+                    "Stage",
+                    modifier = Modifier.weight(2f),
+                    color = TextGray,
+                    fontSize = 12.sp
+                )
+                Text(
+                    "Value",
+                    modifier = Modifier.weight(1.5f),
+                    color = TextGray,
+                    fontSize = 12.sp
+                )
+                Text(
+                    "Status",
+                    modifier = Modifier.weight(1f),
+                    color = TextGray,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.End
+                )
+            }
+            HorizontalDivider(color = BgLight)
+
+            tableRows.forEach { rowData ->
+                val kpi = kpis.firstOrNull { it.id == rowData.kpiId }
+                val value = kpi?.displayValue ?: "--"
+                val statusColor = when (kpi?.status?.name) {
+                    "CRITICAL" -> RedDanger
+                    "WARNING" -> AmberWarning
+                    else -> GreenSuccess
+                }
+                val statusText = kpi?.status?.name ?: "NORMAL"
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        rowData.name,
+                        modifier = Modifier.weight(2f),
+                        color = TextDark,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        rowData.stage,
+                        modifier = Modifier.weight(2f),
+                        color = TextGray,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        "$value ${rowData.unit}",
+                        modifier = Modifier.weight(1.5f),
+                        color = TextDark,
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        statusText,
+                        modifier = Modifier.weight(1f),
+                        color = statusColor,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.End
+                    )
+                }
+                HorizontalDivider(color = BgLight)
+            }
+        }
+    }
+}
+
+data class TableRowData(val name: String, val stage: String, val kpiId: String, val unit: String)

@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
+
+    <!-- ADD THIS: It explicitly allows HTTP (cleartext) traffic for your WebView -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- KEEP THIS: Your existing debug configuration -->
     <debug-overrides>
         <trust-anchors>
             <certificates src="user" />
         </trust-anchors>
     </debug-overrides>
+
 </network-security-config>

@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 import com.example.category3.R
+import com.example.category3.auth.ui.AppDestinations
 
 // Strict Brand Palette
 private val BrandDeepNavy = Color(0xFF0A0D2F)
@@ -95,6 +96,7 @@ fun RadialAppBar(
             Triple(Icons.Rounded.ElectricBolt, "energy_tab", BrandSoftOrange),
             Triple(Icons.Rounded.Factory, "production_tab", BrandCyanBlue),
             Triple(Icons.Rounded.Build, "maintenance_tab", BrandMutedBlue),
+            Triple(Icons.Rounded.Factory, AppDestinations.HMI_LOGIN, BrandMutedBlue),
             Triple(Icons.Rounded.EditNote, "login_screen", BrandOrange)
         )
 

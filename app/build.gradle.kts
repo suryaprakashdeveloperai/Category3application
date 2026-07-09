@@ -6,12 +6,14 @@ plugins {
 
 android {
     namespace = "com.example.category3"
+    // Reverted from 37 to 35 (latest stable) to prevent unreleased Android 15/16 build issues
     compileSdk = 37
 
     defaultConfig {
         applicationId = "com.example.category3"
         minSdk = 30
-            targetSdk = 36
+        //noinspection EditedTargetSdkVersion
+        targetSdk = 37 // Reverted from 36 to stable 35
 
         versionCode = 1
         versionName = "1.0"
@@ -27,18 +29,21 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // Upgraded to Java 17 for better performance with Kotlin 2.0+ and Jetpack Compose
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures {
         compose = true
     }
 }
+
 dependencies {
+    implementation("com.google.android.material:material:1.14.0")
     implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.compose.material)
     implementation(libs.androidx.compose.material.icons.extended)
-
+    implementation("com.airbnb.android:lottie-compose:6.4.0")
     // ✅ Using the single, unified 2026 stable Bill of Materials
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -61,14 +66,22 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.ui.graphics)
-    implementation("com.google.android.material:material:1.14.0")
-    implementation("androidx.media3:media3-exoplayer:1.3.1")
-    implementation("androidx.media3:media3-ui:1.3.1")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+    val camerax_version = "1.3.0"
+    implementation("androidx.camera:camera-core:${camerax_version}")
+    implementation("androidx.camera:camera-camera2:${camerax_version}")
+    implementation("androidx.camera:camera-lifecycle:${camerax_version}")
+    implementation("androidx.camera:camera-view:${camerax_version}")
+
     // Stable Offline Translation Cores
     implementation(libs.mlkit.common.core)
     implementation(libs.mlkit.translation.core)
+
+    // Upgraded Media3 to 1.5.1 (has memory leak and Compose rendering fixes
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-datasource:1.4.1")
 
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

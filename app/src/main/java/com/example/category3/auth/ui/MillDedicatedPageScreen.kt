@@ -1,5 +1,13 @@
 package com.example.category3.auth.ui
 
+import android.content.Context
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -10,6 +18,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,20 +37,31 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DataExploration
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.Power
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.Divider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +75,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,14 +84,113 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.R
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
 // ─── Standardized Brand Colors ────────────────────────────────────────────
 private val BrandBg = Color(0xFFF6F6F7)
-
 private val BrandCyan = Color(0xFF47B3E2)
 
+// Keep a reference so the garbage collector doesn't destroy the WebView before printing starts
+private var activePrintWebView: WebView? = null
+
+// ─── Print Report Generator ────────────────────────────────────────────────
+fun printMillReport(context: Context, live: MillLiveState) {
+    Toast.makeText(context, "Preparing Document for Printer...", Toast.LENGTH_SHORT).show()
+
+    val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    val eff = live.dashboard.efficiency
+    val bagasseLoss = (100.0 - eff).coerceAtLeast(0.0)
+
+    val totalKw = live.power.totalKw
+    val millKw = live.power.millMotorsTotalKw
+    val prepKw = live.power.prepEquipmentTotalKw
+    val auxKw = (totalKw - millKw - prepKw).coerceAtLeast(0f)
+
+    val htmlBuilder = """
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0F172A; padding: 20px; }
+                h1 { border-bottom: 2px solid #47B3E2; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
+                h2 { font-size: 18px; color: #334155; margin-top: 25px; margin-bottom: 10px; background-color: #F6F6F7; padding: 8px; border-radius: 4px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th, td { border: 1px solid #E2E8F0; padding: 10px; text-align: left; font-size: 14px; }
+                th { width: 40%; background-color: #F8FAFC; color: #64748B; font-weight: bold; }
+                td { width: 60%; font-weight: 500; }
+                .footer { margin-top: 30px; font-size: 12px; color: #94A3B8; text-align: center; border-top: 1px solid #E2E8F0; padding-top: 10px; }
+            </style>
+        </head>
+        <body>
+            <h1>Mill Section - Live Operations Report</h1>
+            
+            <h2>General Information</h2>
+            <table>
+                <tr><th>Timestamp</th><td>$timestamp</td></tr>
+                <tr><th>Operator</th><td>${live.dashboard.userName}</td></tr>
+                <tr><th>Batch ID</th><td>${live.dashboard.batchId}</td></tr>
+                <tr><th>Shift Start</th><td>${live.dashboard.startTime}</td></tr>
+                <tr><th>Section Status</th><td>${live.dashboard.sectionStatus.name}</td></tr>
+                <tr><th>Telemetry Link</th><td>${live.connectionStatus}</td></tr>
+            </table>
+
+            <h2>Key Performance Indicators (KPI)</h2>
+            <table>
+                <tr><th>Overall Equipment Effectiveness (OEE)</th><td>${"%.2f".format(live.dashboard.oee)} %</td></tr>
+                <tr><th>Milling Efficiency</th><td>${"%.2f".format(eff)} %</td></tr>
+                <tr><th>Calculated Bagasse Loss</th><td>${"%.2f".format(bagasseLoss)} %</td></tr>
+            </table>
+
+            <h2>Throughput & Feed Metrics</h2>
+            <table>
+                <tr><th>Throughput Mass Flow</th><td>${"%.2f".format(live.throughputKgHr)} kg/hr</td></tr>
+                <tr><th>Throughput Rate</th><td>${"%.2f".format(live.throughputKgS)} kg/s</td></tr>
+                <tr><th>Cane Carrier Fill Level</th><td>${"%.2f".format(live.caneStock.levelPct)} %</td></tr>
+            </table>
+
+            <h2>Raw Juice Extraction</h2>
+            <table>
+                <tr><th>Raw Juice Tank Level</th><td>${"%.2f".format(live.rawJuice.tankLevelPct)} %</td></tr>
+                <tr><th>Juice Volume Flow</th><td>${"%.2f".format(live.rawJuice.volumeFlowM3hr)} m³/h</td></tr>
+                <tr><th>Juice Liquid Flow</th><td>${"%.2f".format(live.rawJuice.flowLhr)} L/h</td></tr>
+                <tr><th>Juice Temperature</th><td>${"%.2f".format(live.rawJuice.temperatureC)} °C</td></tr>
+                <tr><th>Juice Density</th><td>${"%.2f".format(live.rawJuice.densityKgM3)} kg/m³</td></tr>
+                <tr><th>Heater 3 Outlet Target</th><td>${"%.2f".format(live.rawJuice.heater3OutletC)} °C</td></tr>
+            </table>
+
+            <h2>Power Distribution</h2>
+            <table>
+                <tr><th>Total Section Power</th><td>${"%.2f".format(totalKw)} kW</td></tr>
+                <tr><th>Mill Motors Active Load</th><td>${"%.2f".format(millKw)} kW</td></tr>
+                <tr><th>Prep Equipment Active Load</th><td>${"%.2f".format(prepKw)} kW</td></tr>
+                <tr><th>Auxiliary / Support Units</th><td>${"%.2f".format(auxKw)} kW</td></tr>
+            </table>
+
+            <div class="footer">
+                Document automatically generated by Control Room Panel on $timestamp
+            </div>
+        </body>
+        </html>
+    """.trimIndent()
+
+    val webView = WebView(context)
+    activePrintWebView = webView
+
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Mill_Data_Report_${System.currentTimeMillis()}"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            activePrintWebView = null
+        }
+    }
+    webView.loadDataWithBaseURL(null, htmlBuilder, "text/html", "UTF-8", null)
+}
 
 // ─── Grey Frost Glassmorphism Modifier ────────────────────────────────────
 @Composable
@@ -80,7 +200,7 @@ fun Modifier.glassCard(): Modifier = this
         Brush.linearGradient(
             colors = listOf(
                 Color.White.copy(alpha = 0.6f),
-                BrandLightGray.copy(alpha = 0.25f) // The Grey Frost tint
+                BrandLightGray.copy(alpha = 0.25f)
             ),
             start = Offset(0f, 0f),
             end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
@@ -90,13 +210,17 @@ fun Modifier.glassCard(): Modifier = this
         width = 1.dp,
         brush = Brush.linearGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.8f), // Specular light reflection
+                Color.White.copy(alpha = 0.8f),
                 BrandLightGray.copy(alpha = 0.3f)
             )
         ),
         shape = RoundedCornerShape(12.dp)
     )
     .padding(8.dp)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI COMPOSABLES
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun MillDedicatedPageScreen(
@@ -107,16 +231,51 @@ fun MillDedicatedPageScreen(
 ) {
     val vm: MillDedicatedViewModel = viewModel(factory = MillDedicatedViewModel.provideFactory(userName, userRole))
     val live by vm.state.collectAsStateWithLifecycle()
-    MillDedicatedPageContent(live = live, onBack = onBack)
+
+    MillDedicatedPageContent(
+        live = live,
+        onBack = onBack,
+        onNavigateToScreen = onNavigateToScreen,
+        getCsvData = { vm.generateCsvReport() }
+    )
 }
 
 @Composable
 fun MillDedicatedPageContent(
     live: MillLiveState,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onNavigateToScreen: (String) -> Unit = {},
+    getCsvData: () -> String = { "" }
 ) {
+    val context = LocalContext.current
+
+    // System File Picker for saving properly formatted .csv
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri ->
+            if (uri != null) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        outputStream.write(getCsvData().toByteArray())
+                    }
+                    Toast.makeText(context, "CSV File Saved Successfully!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Failed to save file", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    )
+
+    val onExportCsvClick = {
+        val fileName = "Mill_Section_Data_${System.currentTimeMillis()}.csv"
+        createDocumentLauncher.launch(fileName)
+    }
+
+    val onPrintClick = {
+        printMillReport(context, live)
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(BrandBg)) {
-        // Soft backdrop elements to give the glass something to distort/overlay
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(listOf(BrandCyan.copy(alpha = 0.12f), Color.Transparent)),
@@ -139,10 +298,12 @@ fun MillDedicatedPageContent(
                 status = live.dashboard.sectionStatus,
                 shiftStart = live.dashboard.startTime,
                 onBack = onBack,
+                onExportClick = onExportCsvClick,
+                onPrintClick = onPrintClick,
+                onLogEntryClick = { onNavigateToScreen("mill_manual") },
                 modifier = Modifier.padding(bottom = 8.dp)
             )
 
-            // Main UI Frame
             Row(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -162,9 +323,12 @@ fun MillDedicatedPageContent(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    HeroJuiceTankLevelVisual(live = live, modifier = Modifier.weight(1.2f))
+                    HeroJuiceTankLevelVisual(live = live, modifier = Modifier.weight(1.1f))
                     SectionSummaryCard(live = live, modifier = Modifier.wrapContentHeight())
-                    PowerDistributionChart(live = live, modifier = Modifier.weight(1f))
+                    PowerDistributionChart(live = live, modifier = Modifier.weight(0.9f))
+
+                    // Replaced Export Panel with Mill Section Alerts
+                    MillAlertsCard(live = live, modifier = Modifier.wrapContentHeight())
                 }
             }
         }
@@ -172,11 +336,16 @@ fun MillDedicatedPageContent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Header & Process Flow
+// Header with Dropdown Menu & Log Entry Button
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun DashboardHeader(batchId: String, operatorName: String, status: EquipmentStatus, shiftStart: String, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun DashboardHeader(
+    batchId: String, operatorName: String, status: EquipmentStatus,
+    shiftStart: String, onBack: () -> Unit,
+    onExportClick: () -> Unit, onPrintClick: () -> Unit, onLogEntryClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -204,7 +373,65 @@ fun DashboardHeader(batchId: String, operatorName: String, status: EquipmentStat
                     Text(statusLabel, color = statusColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Action Dropdown Menu Button (Export/Print)
+            var menuExpanded by remember { mutableStateOf(false) }
+
+            Box {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(BrandCyan.copy(alpha = 0.1f))
+                        .border(1.dp, BrandCyan.copy(alpha = 0.3f), RoundedCornerShape(50))
+                        .clickable { menuExpanded = true }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Outlined.Download, "Options", tint = BrandDeepNavy, modifier = Modifier.size(16.dp))
+                    Text("Export / Print", color = BrandDeepNavy, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Download CSV File") },
+                        onClick = {
+                            menuExpanded = false
+                            onExportClick()
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Description, contentDescription = null, tint = BrandCyan) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Print Report") },
+                        onClick = {
+                            menuExpanded = false
+                            onPrintClick()
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.Print, contentDescription = null, tint = BrandDeepNavy) }
+                    )
+                }
+            }
+
+            // Log Entry Button Navigates to MillManualEntryScreen
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(BrandDeepNavy)
+                    .clickable { onLogEntryClick() }
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(Icons.Outlined.Edit, "Log Entry", tint = Color.White, modifier = Modifier.size(16.dp))
+                Text("Log Entry", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
         }
+
         Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             HeaderMetaItem("Batch ID", batchId)
             HeaderMetaItem("Current Shift", "Started: $shiftStart")
@@ -220,6 +447,76 @@ fun HeaderMetaItem(label: String, value: String) {
         Text(value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = BrandDeepNavy)
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MILL SECTION ALERTS (Replaces the bottom right Print Panel)
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+fun MillAlertsCard(live: MillLiveState, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxWidth().glassCard()) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Header
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Outlined.WarningAmber, null, tint = BrandDeepNavy, modifier = Modifier.size(20.dp))
+                Text("System Alerts", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = BrandDeepNavy)
+            }
+
+            Divider(color = BrandLightGray.copy(alpha = 0.4f))
+
+            // Generate dynamic alerts based on live state
+            val alerts = mutableListOf<Pair<String, String>>()
+
+            if (live.rawJuice.tankLevelPct > 85f) alerts.add("Critical" to "Raw Juice Tank exceeding safe limit (>85%)")
+            if (live.caneStock.levelPct < 30f) alerts.add("Warning" to "Cane Carrier stock is running low (<30%)")
+            if (live.rawJuice.temperatureC > 80f) alerts.add("Warning" to "Juice temperature above normal bounds")
+            if (live.dashboard.efficiency < 85f) alerts.add("Alert" to "Milling efficiency dropped below target threshold")
+            if (live.connectionStatus == "DISCONNECTED") alerts.add("Critical" to "Telemetry connection lost. Check network.")
+
+            if (alerts.isEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(Icons.Outlined.CheckCircle, null, tint = StatusGreen, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("All systems operating within normal parameters.", fontSize = 12.sp, color = BrandSteelGray, fontWeight = FontWeight.Medium)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    alerts.take(3).forEach { alert ->
+                        AlertRow(type = alert.first, message = alert.second)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AlertRow(type: String, message: String) {
+    val color = if (type == "Critical") StatusRed else BrandOrange
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+            .border(1.dp, color.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(modifier = Modifier.size(8.dp).background(color, CircleShape))
+        Column {
+            Text(type, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color)
+            Text(message, fontSize = 12.sp, color = BrandDeepNavy, lineHeight = 16.sp)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Process Flow Section
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun ProcessFlowSection(live: MillLiveState, modifier: Modifier = Modifier) {
@@ -367,7 +664,7 @@ fun VisualCard(modifier: Modifier, title: String, value: String, icon: androidx.
     }
 }
 
-// ─── Intuitive Custom Charts ───
+// ─── Custom Charts ───
 
 @Composable
 fun ChartSparklineTrend(data: List<Float>, color: Color) {

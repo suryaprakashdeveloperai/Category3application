@@ -62,7 +62,7 @@ data class MillSectionPowerData(
 )
 
 data class MillLiveState(
-    val dashboard: MillDedicatedDashboardState, // <-- FIXED: Now uses the Dedicated state
+    val dashboard: MillDedicatedDashboardState,
     val rawJuice: RawJuiceData,
     val caneStock: CaneStockData,
     val power: MillSectionPowerData,
@@ -86,7 +86,7 @@ class MillDedicatedViewModel(
 
     companion object {
         private const val TAG = "MILL_SSE"
-        private const val SSE_URL = "https://mileage-absolutely-example-shield.trycloudflare.com/stream"
+        private const val SSE_URL = "https://dawn-officers-gas-growth.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         // Reference constants for calculations
@@ -105,7 +105,7 @@ class MillDedicatedViewModel(
     // Seed with realistic values so the UI is never blank while connecting
     private val _state = MutableStateFlow(
         MillLiveState(
-            dashboard = MillDedicatedDashboardState( // <-- FIXED: Uses Dedicated state. No chart/kpis parameters needed!
+            dashboard = MillDedicatedDashboardState(
                 userName = userName,
                 userRole = userRole,
                 batchId = "BATCH-8492",
@@ -139,6 +139,32 @@ class MillDedicatedViewModel(
 
     init {
         startStream()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // CSV EXPORT GENERATOR
+    // This is called by the UI to get the most up-to-date data for downloading/printing
+    // ─────────────────────────────────────────────────────────────────────────────
+    fun generateCsvReport(): String {
+        val current = _state.value
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
+        val headers = "Timestamp,Batch ID,Operator,Status,Throughput (kg/hr),Efficiency (%),OEE (%),Total Power (kW),Juice Flow (L/h),Juice Temp (°C)"
+
+        val row = listOf(
+            timestamp,
+            current.dashboard.batchId,
+            current.dashboard.userName,
+            current.dashboard.sectionStatus.name,
+            String.format(Locale.US, "%.2f", current.throughputKgHr),
+            String.format(Locale.US, "%.2f", current.dashboard.efficiency),
+            String.format(Locale.US, "%.2f", current.dashboard.oee),
+            String.format(Locale.US, "%.2f", current.power.totalKw),
+            String.format(Locale.US, "%.2f", current.rawJuice.flowLhr),
+            String.format(Locale.US, "%.2f", current.rawJuice.temperatureC)
+        ).joinToString(",")
+
+        return "$headers\n$row"
     }
 
     private fun startStream() {

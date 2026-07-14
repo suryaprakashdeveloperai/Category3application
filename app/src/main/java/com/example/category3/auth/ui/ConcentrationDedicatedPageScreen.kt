@@ -37,12 +37,23 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.R
 
-// ─── Theme Colors ─────────────────────────────────────────────────────────
-private val LocalAmber = Color(0xFFF59E0B)
-private val DeepBlue = Color(0xFF1E3A8A)
-private val LightBg = Color(0xFFF8FAFC)
-private val CardBg = Color(0xFFFFFFFF)
-// ─── UI Composables ───────────────────────────────────────────────────────
+// ─── LOCAL THEME COLORS ───────────────────────────────────────────────────
+object ConcColors {
+    val Amber = Color(0xFFF59E0B)
+    val DeepBlue = Color(0xFF1E3A8A)
+    val LightBg = Color(0xFFF8FAFC)
+    val CardBg = Color(0xFFFFFFFF)
+    val StatusRed = Color(0xFFFF4D4D)
+    val StatusGreen = Color(0xFF26C281)
+    val TextDark = Color(0xFF2C3A4B)
+    val TextGray = Color(0xFF67778A)
+    val AccentPurple = Color(0xFFA120FF)
+    val BorderGray = Color(0xFFC5D1DF)
+}
+
+data class ConcMetricItemData(val label: String, val value: String, val metaDesc: String, val accentColor: Color)
+
+// ─── UI COMPOSABLES ───────────────────────────────────────────────────────
 
 @Composable
 fun ConcentrationDedicatedPageScreen(
@@ -72,7 +83,7 @@ fun ConcentrationDedicatedPageContent(
     val state = live.dashboard
     val scroll = rememberScrollState()
 
-    Box(modifier = Modifier.fillMaxSize().background(LightBg)) {
+    Box(modifier = Modifier.fillMaxSize().background(ConcColors.LightBg)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -82,13 +93,13 @@ fun ConcentrationDedicatedPageContent(
             ConcentrationHeader(
                 batchId = state.batchId,
                 statusText = state.sectionStatus.name,
-                statusColor = if (state.sectionStatus == EquipmentStatus.FAULT) StatusRed else StatusGreen,
+                statusColor = if (state.sectionStatus == ConcEquipStatus.FAULT) ConcColors.StatusRed else ConcColors.StatusGreen,
                 shiftStart = state.startTime,
                 onBack = onBack
             )
 
             if (live.connectionStatus == "RECONNECTING" || live.connectionStatus == "DISCONNECTED") {
-                BannerLocal("Stream status is ${live.connectionStatus} — establishing cloud sync telemetry node…", LocalAmber)
+                BannerLocal("Stream status is ${live.connectionStatus} — establishing cloud sync telemetry node…", ConcColors.Amber)
                 Spacer(Modifier.height(12.dp))
             }
 
@@ -100,9 +111,7 @@ fun ConcentrationDedicatedPageContent(
                     modifier = Modifier.weight(2.2f),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    // ─── MOVED TO TOP AND STYLED AS A UNIFIED KPI BOX ───
                     KpiDashboardSection(live = live)
-
                     UnitProcessFlowSection(state.openPans, state.powderMakers)
                 }
 
@@ -139,11 +148,11 @@ fun ConcentrationHeader(
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
                     contentDescription = "Back to Workflow Dashboard",
-                    tint = TextDark
+                    tint = ConcColors.TextDark
                 )
             }
 
-            Text("Concentration Section", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = TextDark)
+            Text("Concentration Section", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
 
             Spacer(modifier = Modifier.size(8.dp))
 
@@ -166,25 +175,25 @@ fun ConcentrationHeader(
         }
     }
 }
-// ─── NEW UNIFIED KPI DASHBOARD SECTION ─────────────────────────────────────
+
 @Composable
 fun KpiDashboardSection(live: ConcentrationDedicatedLiveState) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(CardBg, RoundedCornerShape(16.dp))
-            .border(1.dp, BorderGray, RoundedCornerShape(16.dp))
+            .background(ConcColors.CardBg, RoundedCornerShape(16.dp))
+            .border(1.dp, ConcColors.BorderGray, RoundedCornerShape(16.dp))
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text("📈 Key Performance Indicators", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark)
+        Text("📈 Key Performance Indicators", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
 
         val telemetryItems = listOf(
-            MetricItemData("OEE / Efficiency", "${live.efficiency}%", "Target: >90%", StatusGreen),
-            MetricItemData("Total Output", "%,.0f kg".format(live.totalJaggeryKg), "Accumulated Weight", AccentPurple),
-            MetricItemData("Steam Mass Flow", "%,.0f kg/hr".format(live.steamFlow), "Live Distribution", DeepBlue),
-            MetricItemData("Pans Available", "${live.openPanAvailableCount} Units", "In System Stack", StatusGreen),
-            MetricItemData("Powder Buffers", "${live.powderMakerAvailableCount} Units", "Available Buffer", LocalAmber)
+            ConcMetricItemData("OEE / Efficiency", "${live.efficiency}%", "Target: >90%", ConcColors.StatusGreen),
+            ConcMetricItemData("Total Output", "%,.0f kg".format(live.totalJaggeryKg), "Accumulated Weight", ConcColors.AccentPurple),
+            ConcMetricItemData("Steam Mass Flow", "%,.0f kg/hr".format(live.steamFlow), "Live Distribution", ConcColors.DeepBlue),
+            ConcMetricItemData("Pans Available", "${live.openPanAvailableCount} Units", "In System Stack", ConcColors.StatusGreen),
+            ConcMetricItemData("Powder Buffers", "${live.powderMakerAvailableCount} Units", "Available Buffer", ConcColors.Amber)
         )
 
         Row(
@@ -195,15 +204,15 @@ fun KpiDashboardSection(live: ConcentrationDedicatedLiveState) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .background(LightBg, RoundedCornerShape(12.dp))
+                        .background(ConcColors.LightBg, RoundedCornerShape(12.dp))
                         .padding(16.dp)
                 ) {
                     Column {
-                        Text(item.label, fontSize = 12.sp, color = TextGray, maxLines = 1)
+                        Text(item.label, fontSize = 12.sp, color = ConcColors.TextGray, maxLines = 1)
                         Spacer(Modifier.height(8.dp))
                         Text(item.value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = item.accentColor, maxLines = 1)
                         Spacer(Modifier.height(4.dp))
-                        Text(item.metaDesc, fontSize = 11.sp, color = TextGray, maxLines = 1)
+                        Text(item.metaDesc, fontSize = 11.sp, color = ConcColors.TextGray, maxLines = 1)
                     }
                 }
             }
@@ -217,29 +226,29 @@ fun UnitProcessFlowSection(
     powderMakers: List<ConcentrationPowderMakerUnit>
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text("🍯 Active Processing Units", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark)
+        Text("🍯 Active Processing Units", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             openPans.forEachIndexed { index, op ->
-                val isCritical = op.status == EquipmentStatus.FAULT
-                val cardColor = if (isCritical) StatusRed else if (op.status == EquipmentStatus.RUNNING) StatusGreen else TextGray
+                val isCritical = op.status == ConcEquipStatus.FAULT
+                val cardColor = if (isCritical) ConcColors.StatusRed else if (op.status == ConcEquipStatus.RUNNING) ConcColors.StatusGreen else ConcColors.TextGray
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .background(CardBg, RoundedCornerShape(16.dp))
-                        .run { if (isCritical) border(1.5.dp, StatusRed, RoundedCornerShape(16.dp)) else this }
+                        .background(ConcColors.CardBg, RoundedCornerShape(16.dp))
+                        .run { if (isCritical) border(1.5.dp, ConcColors.StatusRed, RoundedCornerShape(16.dp)) else this }
                         .padding(16.dp)
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                        Box(Modifier.size(24.dp).background(LightBg, CircleShape), contentAlignment = Alignment.Center) {
-                            Text("${index + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextGray)
+                        Box(Modifier.size(24.dp).background(ConcColors.LightBg, CircleShape), contentAlignment = Alignment.Center) {
+                            Text("${index + 1}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextGray)
                         }
                         Spacer(Modifier.height(8.dp))
-                        Text(op.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                        Text(op.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
 
                         Spacer(Modifier.height(8.dp))
 
@@ -257,7 +266,7 @@ fun UnitProcessFlowSection(
                             Text(op.status.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = cardColor)
                         }
                         Spacer(Modifier.height(10.dp))
-                        Divider(color = BorderGray)
+                        Divider(color = ConcColors.BorderGray)
                         Spacer(Modifier.height(10.dp))
 
                         KV("Temperature", "${"%.1f".format(op.tempC)} °C")
@@ -276,23 +285,23 @@ fun UnitProcessFlowSection(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     subList.forEach { pm ->
-                        val isPmFault = pm.status == EquipmentStatus.FAULT
-                        val statusLabelColor = if (isPmFault) StatusRed else if (pm.status == EquipmentStatus.RUNNING) StatusGreen else TextGray
+                        val isPmFault = pm.status == ConcEquipStatus.FAULT
+                        val statusLabelColor = if (isPmFault) ConcColors.StatusRed else if (pm.status == ConcEquipStatus.RUNNING) ConcColors.StatusGreen else ConcColors.TextGray
 
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .background(CardBg, RoundedCornerShape(16.dp))
-                                .run { if (isPmFault) border(1.5.dp, StatusRed, RoundedCornerShape(16.dp)) else this }
+                                .background(ConcColors.CardBg, RoundedCornerShape(16.dp))
+                                .run { if (isPmFault) border(1.5.dp, ConcColors.StatusRed, RoundedCornerShape(16.dp)) else this }
                                 .padding(16.dp)
                         ) {
                             Column(Modifier.fillMaxWidth()) {
                                 Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                    Text(pm.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                                    Text(pm.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
                                     Text(pm.status.name, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusLabelColor)
                                 }
                                 Spacer(Modifier.height(4.dp))
-                                Text("Diagnose: ${pm.statusText}", fontSize = 11.sp, color = TextGray)
+                                Text("Diagnose: ${pm.statusText}", fontSize = 11.sp, color = ConcColors.TextGray)
 
                                 Spacer(Modifier.height(12.dp))
 
@@ -304,7 +313,7 @@ fun UnitProcessFlowSection(
                                 )
 
                                 Spacer(Modifier.height(12.dp))
-                                Divider(color = BorderGray)
+                                Divider(color = ConcColors.BorderGray)
                                 Spacer(Modifier.height(12.dp))
 
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -331,13 +340,12 @@ fun UnitProcessFlowSection(
     }
 }
 
-data class MetricItemData(val label: String, val value: String, val metaDesc: String, val accentColor: Color)
 
 @Composable
 fun IdentitySummaryCard(state: ConcentrationDedicatedDashboardState) {
-    Box(modifier = Modifier.fillMaxWidth().background(CardBg, RoundedCornerShape(16.dp)).padding(16.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().background(ConcColors.CardBg, RoundedCornerShape(16.dp)).padding(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("🏭 Section Identity", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
+            Text("🏭 Section Identity", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
             SummaryFieldRow("Section Workspace", "Concentration Plan")
             SummaryFieldRow("Batch Run Identifier", state.batchId)
             SummaryFieldRow("Shift Registered Start", state.startTime)
@@ -349,11 +357,11 @@ fun IdentitySummaryCard(state: ConcentrationDedicatedDashboardState) {
 
 @Composable
 fun SteamTelemetryCard(live: ConcentrationDedicatedLiveState) {
-    Box(modifier = Modifier.fillMaxWidth().background(CardBg, RoundedCornerShape(16.dp)).padding(16.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().background(ConcColors.CardBg, RoundedCornerShape(16.dp)).padding(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("🔥", fontSize = 14.sp)
-                Text("Boiler Grid Status", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = DeepBlue)
+                Text("Boiler Grid Status", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ConcColors.DeepBlue)
             }
             SummaryFieldRow("Steam Line Pressure", "%.2f Bar".format(live.steamPressure))
             SummaryFieldRow("Discharge Stream Flow", "%,.1f TPH".format(live.steamFlow / 1000.0))
@@ -364,11 +372,11 @@ fun SteamTelemetryCard(live: ConcentrationDedicatedLiveState) {
 
 @Composable
 fun ActiveAlertsPanel(alerts: List<String>) {
-    Box(modifier = Modifier.fillMaxWidth().background(CardBg, RoundedCornerShape(16.dp)).padding(16.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().background(ConcColors.CardBg, RoundedCornerShape(16.dp)).padding(16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("⚠️ Active Critical Alerts (${alerts.size})", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = StatusRed)
+            Text("⚠️ Active Critical Alerts (${alerts.size})", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = ConcColors.StatusRed)
             if (alerts.isEmpty()) {
-                Text("No equipment exceptions logged.", fontSize = 12.sp, color = TextGray)
+                Text("No equipment exceptions logged.", fontSize = 12.sp, color = ConcColors.TextGray)
             } else {
                 alerts.forEach { error ->
                     Row(
@@ -377,8 +385,8 @@ fun ActiveAlertsPanel(alerts: List<String>) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(6.dp).background(StatusRed, CircleShape))
-                            Text(error, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = TextDark)
+                            Box(modifier = Modifier.size(6.dp).background(ConcColors.StatusRed, CircleShape))
+                            Text(error, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = ConcColors.TextDark)
                         }
                     }
                 }
@@ -390,8 +398,8 @@ fun ActiveAlertsPanel(alerts: List<String>) {
 @Composable
 fun SummaryFieldRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, fontSize = 12.sp, color = TextGray)
-        Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
+        Text(label, fontSize = 12.sp, color = ConcColors.TextGray)
+        Text(value, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
     }
 }
 
@@ -414,7 +422,7 @@ private fun KV(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, fontSize = 11.sp, color = TextGray)
-        Text(value, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = TextDark)
+        Text(label, fontSize = 11.sp, color = ConcColors.TextGray)
+        Text(value, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ConcColors.TextDark)
     }
 }

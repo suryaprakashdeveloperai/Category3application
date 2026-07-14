@@ -1,6 +1,17 @@
 package com.example.category3.auth.ui
 
+import android.content.ContentValues
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.MotionEvent
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,7 +32,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.LightMode
@@ -66,16 +80,158 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.data.MillTelemetryState
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT & PRINT LOGIC FOR MANUAL LOGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+fun generateManualLogCsv(state: MillTelemetryState, signaturePoints: List<Offset>, date: String, time: String, shift: String): String {
+    val header = "Date,Time,Shift,Juice Flow (M3/HR),Cane Carrier (RPM),Rake 01 (RPM),Rake 02 (RPM)," +
+            "Mill 01 RPM,Mill 01 Amps,Mill 01 Press," +
+            "Mill 02 RPM,Mill 02 Amps,Mill 02 Press," +
+            "Mill 03 RPM,Mill 03 Amps,Mill 03 Press,Remarks,E-Signature_Data_Base64"
+
+    // Convert Signature Canvas Points into a Base64 string to fit cleanly into a CSV cell
+    val signatureData = if (signaturePoints.isEmpty()) "UNVERIFIED" else {
+        val rawCoords = signaturePoints.joinToString("|") {
+            if (it == Offset.Unspecified) "BREAK" else "${it.x.toInt()}_${it.y.toInt()}"
+        }
+        Base64.encodeToString(rawCoords.toByteArray(), Base64.NO_WRAP)
+    }
+
+    val safeRemarks = state.remarks.replace("\"", "\"\"") // Escape quotes
+    val row = "$date,$time,$shift,${state.juiceFlow},${state.caneCarrierRpm},${state.rake1Rpm},${state.rake2Rpm}," +
+            "${state.m1Rpm},${state.m1Amps},${state.m1Pressure}," +
+            "${state.m2Rpm},${state.m2Amps},${state.m2Pressure}," +
+            "${state.m3Rpm},${state.m3Amps},${state.m3Pressure},\"$safeRemarks\",$signatureData"
+
+    return "$header\n$row"
+}
+
+fun downloadManualLogCsvToDevice(context: Context, csvData: String) {
+    val fileName = "Manual_Mill_Log_${System.currentTimeMillis()}.csv"
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { it.write(csvData.toByteArray()) }
+                Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(targetDir, fileName)
+            file.writeText(csvData)
+            Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private var activePrintWebView: WebView? = null
+
+fun printManualLogReport(context: Context, state: MillTelemetryState, signaturePoints: List<Offset>, date: String, time: String, shift: String) {
+    Toast.makeText(context, "Preparing Report for Printer...", Toast.LENGTH_SHORT).show()
+
+    val safeRemarks = if (state.remarks.isEmpty()) "<i>No annotations provided.</i>" else state.remarks
+
+    // Generate an SVG path string to literally draw the signature in the HTML
+    val signatureSvg = if (signaturePoints.isEmpty()) {
+        "<p style='color: #EF4444; font-weight: bold;'>SIGNATURE MISSING / UNVERIFIED</p>"
+    } else {
+        val pathStr = buildString {
+            var first = true
+            for (p in signaturePoints) {
+                if (p == Offset.Unspecified) {
+                    first = true
+                } else {
+                    if (first) { append("M ${p.x} ${p.y} "); first = false }
+                    else { append("L ${p.x} ${p.y} ") }
+                }
+            }
+        }
+        "<svg width='100%' height='150' style='border:1px solid #E2E8F0; background:#F8FAFC; border-radius: 6px;'><path d='$pathStr' fill='transparent' stroke='#0F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+    }
+
+    val htmlBuilder = """
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0F172A; padding: 20px; }
+                h1 { border-bottom: 2px solid #0EA5E9; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
+                h2 { font-size: 16px; color: #334155; margin-top: 25px; margin-bottom: 10px; background-color: #F6F6F7; padding: 8px; border-radius: 4px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th, td { border: 1px solid #E2E8F0; padding: 10px; text-align: left; font-size: 14px; }
+                th { width: 40%; background-color: #F8FAFC; color: #64748B; font-weight: bold; }
+                td { width: 60%; font-weight: 500; }
+                .remarks-box { border: 1px solid #E2E8F0; padding: 15px; border-radius: 4px; font-size: 14px; min-height: 80px; }
+            </style>
+        </head>
+        <body>
+            <h1>Mill Section - Manual Entry Log</h1>
+            <p><strong>Date:</strong> $date &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Time:</strong> $time &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Shift:</strong> $shift</p>
+
+            <h2>Process Balances</h2>
+            <table>
+                <tr><th>Juice Flow (M³/HR)</th><td>${state.juiceFlow}</td></tr>
+                <tr><th>Cane Carrier (RPM)</th><td>${state.caneCarrierRpm}</td></tr>
+                <tr><th>Rake Array 01 (RPM)</th><td>${state.rake1Rpm}</td></tr>
+                <tr><th>Rake Array 02 (RPM)</th><td>${state.rake2Rpm}</td></tr>
+            </table>
+
+            <h2>Milling Matrix Data</h2>
+            <table>
+                <tr><th>Mill Drive 01</th><td><b>Spd:</b> ${state.m1Rpm} RPM | <b>Load:</b> ${state.m1Amps} A | <b>Press:</b> ${state.m1Pressure} KG/CM²</td></tr>
+                <tr><th>Mill Drive 02</th><td><b>Spd:</b> ${state.m2Rpm} RPM | <b>Load:</b> ${state.m2Amps} A | <b>Press:</b> ${state.m2Pressure} KG/CM²</td></tr>
+                <tr><th>Mill Drive 03</th><td><b>Spd:</b> ${state.m3Rpm} RPM | <b>Load:</b> ${state.m3Amps} A | <b>Press:</b> ${state.m3Pressure} KG/CM²</td></tr>
+            </table>
+
+            <h2>Operator Annotations & Remarks</h2>
+            <div class="remarks-box">$safeRemarks</div>
+            
+            <h2>Operator E-Signature Verification</h2>
+            $signatureSvg
+            
+            <p style="margin-top: 15px; color: #10B981; font-weight: bold; font-size: 12px;">✔ Document Cryptographically Sealed via Device Input</p>
+        </body>
+        </html>
+    """.trimIndent()
+
+    val webView = WebView(context)
+    activePrintWebView = webView
+
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Manual_Mill_Log_${System.currentTimeMillis()}"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            activePrintWebView = null
+        }
+    }
+    webView.loadDataWithBaseURL(null, htmlBuilder, "text/html", "UTF-8", null)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI PALETTE & STYLES
+// ─────────────────────────────────────────────────────────────────────────────
 private data class MorphicPalette(
     val baseChassis: Color, val glassFill: Color, val glassBorder: Color,
     val inputContainer: Color, val textPrimary: Color, val textMuted: Color,
@@ -98,16 +254,20 @@ private fun getDynamicMorphicPalette(isDark: Boolean): MorphicPalette {
         )
     }
 }
-
 private val TechAccentBlue = Color(0xFF0EA5E9)
 private val TechAccentGreen = Color(0xFF10B981)
 private val TechWarnOrange = Color(0xFFF97316)
 private val TechAlarmRed = Color(0xFFEF4444)
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN UI SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MillManualEntryScreen(
-    viewModel: MillDedicatedViewModel = viewModel(factory = MillDedicatedViewModel.provideFactory()),
+    viewModel: MillManualEntryViewModel = viewModel(factory = MillManualEntryViewModel.provideFactory()),
     onRaiseTicket: (String) -> Unit,
     onNavigationCallback: () -> Unit
 ) {
@@ -128,6 +288,9 @@ fun MillManualEntryScreen(
     var isDarkThemeOverride by remember { mutableStateOf(false) }
     val palette = getDynamicMorphicPalette(isDark = isDarkThemeOverride)
 
+    // Controls the export popup
+    var showExportDialog by remember { mutableStateOf(false) }
+
     // Clock Loop
     LaunchedEffect(Unit) {
         while (true) {
@@ -143,10 +306,8 @@ fun MillManualEntryScreen(
             val m2 = liveState.dashboard.motors.getOrNull(1)
             val m3 = liveState.dashboard.motors.getOrNull(2)
 
-            // Safely extract numeric strings from formatted tags (e.g., "25.0 A" -> "25.0")
-            fun extractAmps(m: MotorData?) = m?.healthValue?.replace(Regex("[^0-9.]"), "") ?: ""
-            // Extract RPM from status string (e.g., "Stable · 745 RPM" -> "745")
-            fun extractRpm(m: MotorData?) = Regex("(\\d+)").find(m?.statusText ?: "")?.value ?: ""
+            fun extractAmps(m: MillManualMotorData?) = m?.healthValue?.replace(Regex("[^0-9.]"), "") ?: ""
+            fun extractRpm(m: MillManualMotorData?) = Regex("(\\d+)").find(m?.statusText ?: "")?.value ?: ""
 
             state = state.copy(
                 juiceFlow = String.format("%.1f", liveState.rawJuice.volumeFlowM3hr),
@@ -156,7 +317,6 @@ fun MillManualEntryScreen(
                 m2Rpm = extractRpm(m2).ifEmpty { state.m2Rpm },
                 m3Amps = extractAmps(m3).ifEmpty { state.m3Amps },
                 m3Rpm = extractRpm(m3).ifEmpty { state.m3Rpm }
-                // Note: Rakes and Pressures are retained as manual inputs since they are not provided by VM
             )
         }
     }
@@ -169,6 +329,8 @@ fun MillManualEntryScreen(
             else -> "SHIFT C"
         }
     }
+
+    val currentTimeFormatted = currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
     val structuralBackgroundModifier = if (isDarkThemeOverride) {
         Modifier.background(Brush.radialGradient(colors = listOf(Color(0xFF1E1B4B), Color(0xFF090A10)), radius = 2200f))
@@ -187,7 +349,6 @@ fun MillManualEntryScreen(
             modifier = Modifier.width(1280.dp).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-
             // ============================================================================
             // MASTER HEADER
             // ============================================================================
@@ -235,7 +396,7 @@ fun MillManualEntryScreen(
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                    Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+                    Text("TIME: $currentTimeFormatted | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
                 }
             }
 
@@ -246,7 +407,6 @@ fun MillManualEntryScreen(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-
                 // 🛑 LEFT DASHBOARD COLUMN
                 Column(
                     modifier = Modifier.weight(1.1f),
@@ -431,7 +591,7 @@ fun MillManualEntryScreen(
                                 }
                                 SignatureCaptureCanvas(
                                     points = signaturePoints,
-                                    strokeColor = if (isDarkThemeOverride) TechAccentBlue else MinimalistTextPrimary,
+                                    strokeColor = if (isDarkThemeOverride) TechAccentBlue else palette.textPrimary,
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
@@ -486,6 +646,7 @@ fun MillManualEntryScreen(
                         Text("RESET LOCK", color = palette.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
                     }
 
+                    // Triggers the Export Dialog overlay
                     Box(
                         modifier = Modifier
                             .height(40.dp)
@@ -494,8 +655,7 @@ fun MillManualEntryScreen(
                             .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
                             .clickable {
                                 if (signaturePoints.isNotEmpty()) {
-                                    state = state.copy(isSubmitted = true)
-                                    onNavigationCallback()
+                                    showExportDialog = true
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -505,8 +665,104 @@ fun MillManualEntryScreen(
                 }
             }
         }
+
+        // ============================================================================
+        // EXPORT / PRINT OVERLAY DIALOG
+        // ============================================================================
+        if (showExportDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .clickable(enabled = false) {}, // Intercept clicks
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(480.dp)
+                        .shadow(16.dp, RoundedCornerShape(16.dp))
+                        .background(palette.baseChassis, RoundedCornerShape(16.dp))
+                        .border(1.dp, palette.glassBorder, RoundedCornerShape(16.dp))
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = TechAccentGreen, modifier = Modifier.size(56.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("LOG COMMITTED SUCCESSFULLY", color = TechAccentGreen, fontSize = 18.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "Do you want to export a copy of this manual entry before closing?",
+                        color = palette.textPrimary, fontSize = 13.sp, fontFamily = FontTelemetryMono, textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // 1. PRINT BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    // Notice: we are passing the signaturePoints so the PDF draws the exact path!
+                                    printManualLogReport(context, state, signaturePoints, currentDate, currentTimeFormatted, currentShift)
+                                    state = state.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Print, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("PRINT PDF", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
+                            }
+                        }
+
+                        // 2. CSV DOWNLOAD BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    // Passed signature points to convert them to Base64 in the CSV column
+                                    val csvData = generateManualLogCsv(state, signaturePoints, currentDate, currentTimeFormatted, currentShift)
+                                    downloadManualLogCsvToDevice(context, csvData)
+                                    state = state.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Download, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("SAVE CSV", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
+                            }
+                        }
+
+                        // 3. SKIP BUTTON
+                        Box(
+                            modifier = Modifier.weight(0.7f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(TechAccentBlue)
+                                .clickable {
+                                    state = state.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("SKIP", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSABLE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable

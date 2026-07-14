@@ -1,7 +1,18 @@
 package com.example.category3.auth.ui
 
+import android.content.ContentValues
+import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
+import android.os.Environment
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.MotionEvent
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +35,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.LightMode
@@ -71,15 +85,174 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT & PRINT LOGIC FOR OPEN PAN
+// ─────────────────────────────────────────────────────────────────────────────
+
+fun generateOpenPanLogCsv(
+    manualState: OpenPanManualState,
+    steamPressure: String, steamFlow: String, totalJaggeryKg: String,
+    signaturePoints: List<Offset>, date: String, time: String, shift: String
+): String {
+    val header = "Date,Time,Shift,Batch Number,Open Pan No,Start Time,End Time,Duration," +
+            "Steam Pressure (KG/CM2),Steam Flow (TPH),Total Jaggery Produced (KG)," +
+            "Coconut Oil Added (ML),Soda Addition (G),Target Jaggery to Charge (KG)," +
+            "Remarks,E-Signature_Data_Base64"
+
+    // Convert Signature Canvas Points to Base64 to safely embed in CSV
+    val signatureData = if (signaturePoints.isEmpty()) "UNVERIFIED" else {
+        val rawCoords = signaturePoints.joinToString("|") {
+            if (it == Offset.Unspecified) "BREAK" else "${it.x.toInt()}_${it.y.toInt()}"
+        }
+        Base64.encodeToString(rawCoords.toByteArray(), Base64.NO_WRAP)
+    }
+
+    val safeRemarks = manualState.remarks.replace("\"", "\"\"") // Escape quotes
+    val row = "$date,$time,$shift,${manualState.batchNo},${manualState.openPanNo},${manualState.startTime},${manualState.endTime},${manualState.duration}," +
+            "$steamPressure,$steamFlow,$totalJaggeryKg," +
+            "${manualState.coconutOilMl},${manualState.sodaAdditionGrams},${manualState.jaggeryQtyKg}," +
+            "\"$safeRemarks\",$signatureData"
+
+    return "$header\n$row"
+}
+
+fun downloadOpenPanLogCsvToDevice(context: Context, csvData: String) {
+    val fileName = "Open_Pan_Log_${System.currentTimeMillis()}.csv"
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { it.write(csvData.toByteArray()) }
+                Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(targetDir, fileName)
+            file.writeText(csvData)
+            Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// Keep a reference so the webview isn't garbage collected before print finishes
+private var activeOpenPanPrintWebView: WebView? = null
+
+fun printOpenPanLogReport(
+    context: Context, manualState: OpenPanManualState,
+    steamPressure: String, steamFlow: String, totalJaggeryKg: String,
+    signaturePoints: List<Offset>, date: String, time: String, shift: String
+) {
+    Toast.makeText(context, "Preparing Report for Printer...", Toast.LENGTH_SHORT).show()
+
+    val safeRemarks = if (manualState.remarks.isEmpty()) "<i>No anomalies reported.</i>" else manualState.remarks
+
+    // SVG drawing logic for E-Signature
+    val signatureSvg = if (signaturePoints.isEmpty()) {
+        "<p style='color: #EF4444; font-weight: bold;'>SIGNATURE MISSING / UNVERIFIED</p>"
+    } else {
+        val pathStr = buildString {
+            var first = true
+            for (p in signaturePoints) {
+                if (p == Offset.Unspecified) {
+                    first = true
+                } else {
+                    if (first) { append("M ${p.x} ${p.y} "); first = false }
+                    else { append("L ${p.x} ${p.y} ") }
+                }
+            }
+        }
+        "<svg width='100%' height='150' style='border:1px solid #E2E8F0; background:#F8FAFC; border-radius: 6px;'><path d='$pathStr' fill='transparent' stroke='#0F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+    }
+
+    val htmlBuilder = """
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0F172A; padding: 20px; }
+                h1 { border-bottom: 2px solid #0EA5E9; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
+                h2 { font-size: 16px; color: #334155; margin-top: 25px; margin-bottom: 10px; background-color: #F6F6F7; padding: 8px; border-radius: 4px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th, td { border: 1px solid #E2E8F0; padding: 10px; text-align: left; font-size: 14px; }
+                th { width: 40%; background-color: #F8FAFC; color: #64748B; font-weight: bold; }
+                td { width: 60%; font-weight: 500; }
+                .remarks-box { border: 1px solid #E2E8F0; padding: 15px; border-radius: 4px; font-size: 14px; min-height: 80px; }
+            </style>
+        </head>
+        <body>
+            <h1>Open Pan Evaporation - Manual Entry Log</h1>
+            <p><strong>Date:</strong> $date &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Time:</strong> $time &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Shift:</strong> $shift</p>
+
+            <h2>Live Process Telemetry (PLC Snapshot)</h2>
+            <table>
+                <tr><th>Steam Pressure (KG/CM²)</th><td>$steamPressure</td></tr>
+                <tr><th>Steam Flow (TPH)</th><td>$steamFlow</td></tr>
+                <tr><th>Total Jaggery Produced (KG)</th><td>$totalJaggeryKg</td></tr>
+            </table>
+
+            <h2>Batch Scheduling Timelines</h2>
+            <table>
+                <tr><th>Batch Number</th><td>${manualState.batchNo}</td></tr>
+                <tr><th>Open Pan Unit No</th><td>${manualState.openPanNo}</td></tr>
+                <tr><th>Start Time</th><td>${manualState.startTime}</td></tr>
+                <tr><th>End Time</th><td>${manualState.endTime}</td></tr>
+                <tr><th>Total Duration</th><td>${manualState.duration}</td></tr>
+            </table>
+            
+            <h2>Raw Material Imprint Additions</h2>
+            <table>
+                <tr><th>Coconut Oil Added (ML)</th><td>${manualState.coconutOilMl}</td></tr>
+                <tr><th>Soda Addition (Grams)</th><td>${manualState.sodaAdditionGrams}</td></tr>
+                <tr><th>Target Jaggery to Charge (KG)</th><td>${manualState.jaggeryQtyKg}</td></tr>
+            </table>
+
+            <h2>Operator Annotations & Remarks</h2>
+            <div class="remarks-box">$safeRemarks</div>
+            
+            <h2>Supervisor E-Signature Verification</h2>
+            $signatureSvg
+            
+            <p style="margin-top: 15px; color: #10B981; font-weight: bold; font-size: 12px;">✔ Document Cryptographically Sealed via Device Input</p>
+        </body>
+        </html>
+    """.trimIndent()
+
+    val webView = WebView(context)
+    activeOpenPanPrintWebView = webView
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Open_Pan_Log_${System.currentTimeMillis()}"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            activeOpenPanPrintWebView = null
+        }
+    }
+    webView.loadDataWithBaseURL(null, htmlBuilder, "text/html", "UTF-8", null)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE & UI PALETTE STYLES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // State exclusively for the Manual Inputs
 data class OpenPanManualState(
@@ -123,6 +296,10 @@ private val TechAccentGreen = Color(0xFF10B981)
 private val TechWarnOrange = Color(0xFFF97316)
 private val TechAlarmRed = Color(0xFFEF4444)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN UI SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OpenPanScreen(
@@ -150,6 +327,14 @@ fun OpenPanScreen(
     var isDarkThemeOverride by remember { mutableStateOf(false) }
     val palette = getOpenPanDynamicMorphicPalette(isDark = isDarkThemeOverride)
 
+    // Export Dialog State
+    var showExportDialog by remember { mutableStateOf(false) }
+
+    // Live formatted strings (to pass to export functions)
+    val steamPressFmt = String.format("%.2f", liveState.steamPressure)
+    val steamFlowFmt = String.format("%,.0f", liveState.steamFlow)
+    val totalJaggeryFmt = String.format("%,.0f", liveState.totalJaggeryKg)
+
     // Clock Ticker
     LaunchedEffect(Unit) {
         while (true) {
@@ -166,6 +351,8 @@ fun OpenPanScreen(
             else -> "SHIFT C"
         }
     }
+
+    val currentTimeFormatted = currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
     val structuralBackgroundModifier = if (isDarkThemeOverride) {
         Modifier.background(Brush.radialGradient(colors = listOf(Color(0xFF1E1B4B), Color(0xFF090A10)), radius = 2200f))
@@ -213,7 +400,7 @@ fun OpenPanScreen(
         val timeDetails = @Composable {
             Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
                 Text("DATE: $currentDate", fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+                Text("TIME: $currentTimeFormatted | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -230,15 +417,14 @@ fun OpenPanScreen(
         }
     }
 
-    // --- NEW LIVE PLC DATA PANELS ---
     val LivePLCContent = @Composable { modifier: Modifier ->
         OpenPanFormSectionCard(title = "LIVE PROCESS TELEMETRY", icon = Icons.Rounded.Analytics, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OpenPanLogInputField("STEAM PRESSURE (KG/CM²)", String.format("%.2f", liveState.steamPressure), palette, Modifier.weight(1f), isReadOnly = true) {}
-                    OpenPanLogInputField("STEAM FLOW (TPH)", String.format("%,.0f", liveState.steamFlow), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    OpenPanLogInputField("STEAM PRESSURE (KG/CM²)", steamPressFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    OpenPanLogInputField("STEAM FLOW (TPH)", steamFlowFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
-                OpenPanLogInputField("TOTAL JAGGERY PRODUCED (KG)", String.format("%,.0f", liveState.totalJaggeryKg), palette, Modifier.fillMaxWidth(), isReadOnly = true) {}
+                OpenPanLogInputField("TOTAL JAGGERY PRODUCED (KG)", totalJaggeryFmt, palette, Modifier.fillMaxWidth(), isReadOnly = true) {}
             }
         }
     }
@@ -258,7 +444,6 @@ fun OpenPanScreen(
         }
     }
 
-    // --- MANUAL ENTRY PANELS ---
     val TimelinesContent = @Composable { modifier: Modifier ->
         OpenPanFormSectionCard(title = "BATCH SCHEDULING TIMELINES", icon = Icons.Rounded.Schedule, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
@@ -419,7 +604,11 @@ fun OpenPanScreen(
                         .then(if (isPortrait) Modifier.fillMaxWidth() else Modifier.width(220.dp))
                         .clip(RoundedCornerShape(50))
                         .background(Brush.linearGradient(colors = if (manualState.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
-                        .clickable { if (signaturePoints.isNotEmpty()) { manualState = manualState.copy(isSubmitted = true); onNavigationCallback() } },
+                        .clickable {
+                            if (signaturePoints.isNotEmpty()) {
+                                showExportDialog = true
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("COMMIT JOURNAL LOG", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
@@ -470,7 +659,7 @@ fun OpenPanScreen(
                 FooterContent()
             }
         } else {
-            // 💻 LANDSCAPE LAYOUT - 3 Columns to fit Live Data properly
+            // 💻 LANDSCAPE LAYOUT
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -481,7 +670,7 @@ fun OpenPanScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // LEFT COLUMN: Live PLC Data & Equipment
+                    // LEFT COLUMN
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -490,7 +679,7 @@ fun OpenPanScreen(
                         EquipmentContent(Modifier.weight(1f))
                     }
 
-                    // CENTER COLUMN: Scheduling & Materials Data (Manual)
+                    // CENTER COLUMN
                     Column(
                         modifier = Modifier.weight(1.1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -499,7 +688,7 @@ fun OpenPanScreen(
                         RawMaterialsContent(Modifier)
                     }
 
-                    // RIGHT COLUMN: Audio & Signature
+                    // RIGHT COLUMN
                     Column(
                         modifier = Modifier.weight(1.1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -512,18 +701,118 @@ fun OpenPanScreen(
                 FooterContent()
             }
         }
+
+        // ============================================================================
+        // EXPORT / PRINT OVERLAY DIALOG
+        // ============================================================================
+        if (showExportDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .clickable(enabled = false) {}, // Intercept background clicks
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(480.dp)
+                        .shadow(16.dp, RoundedCornerShape(16.dp))
+                        .background(palette.baseChassis, RoundedCornerShape(16.dp))
+                        .border(1.dp, palette.glassBorder, RoundedCornerShape(16.dp))
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = TechAccentGreen, modifier = Modifier.size(56.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("LOG COMMITTED SUCCESSFULLY", color = TechAccentGreen, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "Do you want to export a copy of this manual entry before closing?",
+                        color = palette.textPrimary, fontSize = 13.sp, textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // 1. PRINT BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    printOpenPanLogReport(
+                                        context, manualState, steamPressFmt, steamFlowFmt, totalJaggeryFmt,
+                                        signaturePoints, currentDate, currentTimeFormatted, currentShift
+                                    )
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Print, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("PRINT PDF", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // 2. CSV DOWNLOAD BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val csvData = generateOpenPanLogCsv(
+                                        manualState, steamPressFmt, steamFlowFmt, totalJaggeryFmt,
+                                        signaturePoints, currentDate, currentTimeFormatted, currentShift
+                                    )
+                                    downloadOpenPanLogCsvToDevice(context, csvData)
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Download, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("SAVE CSV", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // 3. SKIP BUTTON
+                        Box(
+                            modifier = Modifier.weight(0.7f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(TechAccentBlue)
+                                .clickable {
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("SKIP", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPOSABLE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun HardwareStateBadge(
     title: String,
-    status: EquipmentStatus,
+    status: ConcEquipStatus,
     statusText: String,
     palette: OpenPanMorphicPalette
 ) {
-    val isFault = status == EquipmentStatus.FAULT
-    val isRunning = status == EquipmentStatus.RUNNING
+    val isFault = status == ConcEquipStatus.FAULT
+    val isRunning = status == ConcEquipStatus.RUNNING
 
     val badgeColor = when {
         isFault -> TechAlarmRed

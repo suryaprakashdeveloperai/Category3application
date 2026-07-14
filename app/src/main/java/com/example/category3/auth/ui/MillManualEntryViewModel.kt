@@ -26,50 +26,50 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Specific Data Models tailored for the Manual Entry UI Expectations
+// ISOLATED DATA MODELS (Prefixed with MillManual to prevent clashes)
 // ─────────────────────────────────────────────────────────────────────────────
 
-enum class EquipmentStatus { RUNNING, STANDBY, FAULT, OFFLINE }
+enum class MillManualEquipStatus { RUNNING, STANDBY, FAULT, OFFLINE }
 
-data class MotorData(
+data class MillManualMotorData(
     val name: String = "",
-    val healthValue: String = "", // Formatted directly for UI (e.g., "13.8 A")
-    val statusText: String = ""   // Formatted directly for UI (e.g., "Stable · 741 RPM")
+    val healthValue: String = "",
+    val statusText: String = ""
 )
 
-data class ManualEntryDashboardState(
-    val motors: List<MotorData> = emptyList() // Holds M1, M2, M3
+data class MillManualDashboardState(
+    val motors: List<MillManualMotorData> = emptyList()
 )
 
-data class ManualRawJuiceData(
+data class MillManualRawJuiceData(
     val volumeFlowM3hr: Float = 0f,
-    val pumpStatus: EquipmentStatus = EquipmentStatus.STANDBY
+    val pumpStatus: MillManualEquipStatus = MillManualEquipStatus.STANDBY
 )
 
 data class MillManualLiveState(
-    val dashboard: ManualEntryDashboardState,
-    val rawJuice: ManualRawJuiceData,
+    val dashboard: MillManualDashboardState,
+    val rawJuice: MillManualRawJuiceData,
     val rjPumpFault: Boolean,
     val connectionStatus: String,
     val lastUpdated: Long
 )
 
-// Raw Payload Class for SSE Parsing
-data class IndustrialTelemetryRaw(
+// Re-added the missing Raw Payload Class for SSE Parsing
+data class MillManualSsePayload(
     val timestamp: Double? = null,
     val date: String? = null,
     val tags: Map<String, String>? = null
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The ViewModel
+// VIEWMODEL
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MillManualEntryViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "MILL_MANUAL_SSE"
-        private const val SSE_URL = "https://mileage-absolutely-example-shield.trycloudflare.com/stream"
+        private const val SSE_URL = "https://warner-regional-gay-donors.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         fun provideFactory(): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
@@ -79,19 +79,18 @@ class MillManualEntryViewModel : ViewModel() {
         }
     }
 
-    // Seed state so UI doesn't crash or show blank data while connecting
     private val _state = MutableStateFlow(
         MillManualLiveState(
-            dashboard = ManualEntryDashboardState(
+            dashboard = MillManualDashboardState(
                 motors = listOf(
-                    MotorData("Mill 01", "0.0 A", "Stable · 0 RPM"),
-                    MotorData("Mill 02", "0.0 A", "Stable · 0 RPM"),
-                    MotorData("Mill 03", "0.0 A", "Stable · 0 RPM")
+                    MillManualMotorData("Mill 01", "0.0 A", "Stable · 0 RPM"),
+                    MillManualMotorData("Mill 02", "0.0 A", "Stable · 0 RPM"),
+                    MillManualMotorData("Mill 03", "0.0 A", "Stable · 0 RPM")
                 )
             ),
-            rawJuice = ManualRawJuiceData(
+            rawJuice = MillManualRawJuiceData(
                 volumeFlowM3hr = 0.0f,
-                pumpStatus = EquipmentStatus.STANDBY
+                pumpStatus = MillManualEquipStatus.STANDBY
             ),
             rjPumpFault = false,
             connectionStatus = "CONNECTING",
@@ -158,13 +157,11 @@ class MillManualEntryViewModel : ViewModel() {
             val json = rawData.trimStart().removePrefix("data:").trim()
             if (json.isEmpty() || json == ":") return
 
-            val payload = gson.fromJson(json, IndustrialTelemetryRaw::class.java) ?: return
+            val payload = gson.fromJson(json, MillManualSsePayload::class.java) ?: return
             val tags = payload.tags ?: return
 
-            // Safe fetcher for JSON Tags
             fun tag(key: String): Float = tags[key]?.toFloatOrNull() ?: 0f
 
-            // 1. Process Motors Data for UI Regex expectations based on the JSON provided
             val m1Amps = String.format("%.1f", tag("MotorMill1_A"))
             val m1Rpm = tag("MotorMill1_RPM").toInt()
 
@@ -175,28 +172,22 @@ class MillManualEntryViewModel : ViewModel() {
             val m3Rpm = tag("MotorMill3_RPM").toInt()
 
             val liveMotors = listOf(
-                MotorData("Mill 01", "$m1Amps A", "Stable · $m1Rpm RPM"),
-                MotorData("Mill 02", "$m2Amps A", "Stable · $m2Rpm RPM"),
-                MotorData("Mill 03", "$m3Amps A", "Stable · $m3Rpm RPM")
+                MillManualMotorData("Mill 01", "$m1Amps A", "Stable · $m1Rpm RPM"),
+                MillManualMotorData("Mill 02", "$m2Amps A", "Stable · $m2Rpm RPM"),
+                MillManualMotorData("Mill 03", "$m3Amps A", "Stable · $m3Rpm RPM")
             )
 
-            // 2. Process Raw Juice Flow
             val flowM3 = tag("RawJuiceFlow_Volume")
-
-            // 3. Evaluate Pump Status (If Flow > 0.5 or pump amps > 0)
             val pumpAmps = tag("RJTank_Pump(Active)_amps")
             val isPumpRunning = flowM3 > 0.5f || pumpAmps > 0.005f
-
-            // Based on JSON, we check if trip/fault state exists. Defaults to false if healthy.
             val isPumpFault = false
 
-            // Push to StateFlow
             _state.update { currentState ->
                 currentState.copy(
-                    dashboard = ManualEntryDashboardState(motors = liveMotors),
-                    rawJuice = ManualRawJuiceData(
+                    dashboard = MillManualDashboardState(motors = liveMotors),
+                    rawJuice = MillManualRawJuiceData(
                         volumeFlowM3hr = flowM3,
-                        pumpStatus = if (isPumpRunning && !isPumpFault) EquipmentStatus.RUNNING else EquipmentStatus.STANDBY
+                        pumpStatus = if (isPumpRunning && !isPumpFault) MillManualEquipStatus.RUNNING else MillManualEquipStatus.STANDBY
                     ),
                     rjPumpFault = isPumpFault,
                     connectionStatus = "CONNECTED",
@@ -214,9 +205,7 @@ class MillManualEntryViewModel : ViewModel() {
             override fun checkServerTrusted(c: Array<out X509Certificate>?, a: String?) {}
             override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
         })
-        val ssl = SSLContext.getInstance("TLS").apply {
-            init(null, trustAll, SecureRandom())
-        }
+        val ssl = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         return OkHttpClient.Builder()
             .sslSocketFactory(ssl.socketFactory, trustAll[0] as X509TrustManager)
             .hostnameVerifier { _, _ -> true }

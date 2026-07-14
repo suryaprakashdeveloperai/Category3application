@@ -1,6 +1,5 @@
 package com.example.category3.auth.ui
 
-import android.graphics.Color
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -26,7 +25,26 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import kotlin.math.abs
-// KPI model for Defecator page (separate from KpiDataMill to avoid clashes)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ISOLATED DATA MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum class DefecatorEquipStatus { RUNNING, STANDBY, FAULT, HEALTHY }
+
+data class DefecatorSsePayload(
+    val timestamp: Double? = null,
+    val date: String? = null,
+    val tags: Map<String, String>? = null
+)
+
+data class DefecatorEquipData(
+    val name: String,
+    val value: String,
+    val statusText: String,
+    val status: DefecatorEquipStatus
+)
+
 data class DefecatorKpiData(
     val title: String,
     val value: String,
@@ -46,68 +64,52 @@ data class DefecatorDashboardState(
     val userRole: String,
     val batchId: String,
     val startTime: String,
-    val sectionStatus: EquipmentStatus,
-    val units: List<EquipmentData>,      // pumps/filters/floc/mud, etc
+    val sectionStatus: DefecatorEquipStatus,
+    val units: List<DefecatorEquipData>,
     val kpis: List<DefecatorKpiData>,
     val chart: DefecatorChartData,
-    val processStability: Double         // 0..100 (simple score)
+    val processStability: Double
 )
 
 data class DefecatorProcessData(
-    val pH: Float,
-    val djTankLevel: Float,
-    val djActivePumpA: Float,
-    val djStandbyPumpA: Float,
-    val heater1InletC: Float,
-    val heater1OutletC: Float,
-    val heater2OutletC: Float,
-    val heater3SpC: Float,
-    val heater3PvC: Float,
-    val heater3SteamValvePct: Float,
+    val pH: Float, val djTankLevel: Float, val djActivePumpA: Float, val djStandbyPumpA: Float,
+    val heater1InletC: Float, val heater1OutletC: Float, val heater2OutletC: Float,
+    val heater3SpC: Float, val heater3PvC: Float, val heater3SteamValvePct: Float,
     val srtBufferLevel: Float
 )
 
-data class FlocculantData(
-    val pump1Status: EquipmentStatus,
-    val pump1SpeedPct: Float,
-    val pump2Status: EquipmentStatus,
-    val pump2SpeedPct: Float
+data class DefecatorFlocData(
+    val pump1Status: DefecatorEquipStatus, val pump1SpeedPct: Float,
+    val pump2Status: DefecatorEquipStatus, val pump2SpeedPct: Float
 )
 
-data class MudFilterData(
-    val mudPump1Status: EquipmentStatus,
-    val mudPump2Status: EquipmentStatus,
-    val pcFilterVacuumPumpStatus: EquipmentStatus,
-    val fc1SpeedPct: Float,
-    val fc2SpeedPct: Float,
-    val fc3SpeedPct: Float
+data class DefecatorMudData(
+    val mudPump1Status: DefecatorEquipStatus, val mudPump2Status: DefecatorEquipStatus,
+    val pcFilterVacuumPumpStatus: DefecatorEquipStatus,
+    val fc1SpeedPct: Float, val fc2SpeedPct: Float, val fc3SpeedPct: Float
 )
 
-data class ClearJuiceData(
-    val tankLevel: Float,
-    val activePumpA: Float,
-    val standbyPumpA: Float,
-    val flow: Float,
-    val density: Float,
-    val filterOn: Boolean,
-    val heaterInletC: Float,
-    val heaterOutletC: Float
+data class DefecatorCJData(
+    val tankLevel: Float, val activePumpA: Float, val standbyPumpA: Float,
+    val flow: Float, val density: Float, val filterOn: Boolean,
+    val heaterInletC: Float, val heaterOutletC: Float
 )
 
 data class DefecatorLiveState(
     val dashboard: DefecatorDashboardState,
     val process: DefecatorProcessData,
-    val floc: FlocculantData,
-    val mudFilter: MudFilterData,
-    val clearJuice: ClearJuiceData,
+    val floc: DefecatorFlocData,
+    val mudFilter: DefecatorMudData,
+    val clearJuice: DefecatorCJData,
     val alerts: List<String>,
     val connectionStatus: String,
     val lastUpdated: Long
 )
 
-// Optional helper if you want a simple “good/bad” color
-fun boolToColor(good: Boolean, goodColor: Color, badColor: Color): Color =
-    if (good) goodColor else badColor
+// ─────────────────────────────────────────────────────────────────────────────
+// VIEWMODEL
+// ─────────────────────────────────────────────────────────────────────────────
+
 class DefecatorDedicatedViewModel(
     private val userName: String = "Operator",
     private val userRole: String = "Shift Engineer"
@@ -115,28 +117,20 @@ class DefecatorDedicatedViewModel(
 
     companion object {
         private const val TAG = "DEFECATOR_SSE"
-        private const val SSE_URL =
-            "https://associate-supplier-alternatives-millennium.trycloudflare.com/stream"
+        private const val SSE_URL = "https://dawn-officers-gas-growth.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
-        // Thresholds (tune)
         private const val PH_TARGET = 7.2f
         private const val PH_MIN_OK = 6.8f
         private const val PH_MAX_OK = 7.8f
-
         private const val PUMP_NEAR_ZERO_A = 0.5f
         private const val HEATER3_DEV_WARN_C = 5.0f
-
         private const val CJ_FLOW_TARGET_LHR = 10_000f
         private const val CJ_FLOW_DESIGN_LHR = 12_000f
 
-        fun provideFactory(
-            userName: String = "Operator",
-            userRole: String = "Shift Engineer"
-        ): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
+        fun provideFactory(userName: String = "Operator", userRole: String = "Shift Engineer"): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                DefecatorDedicatedViewModel(userName, userRole) as T
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = DefecatorDedicatedViewModel(userName, userRole) as T
         }
     }
 
@@ -145,60 +139,20 @@ class DefecatorDedicatedViewModel(
     private var reconnectJob: Job? = null
     private val sseClient = buildInsecureClient()
 
-    // Seed so UI is never empty
     private val seedDashboard = DefecatorDashboardState(
-        userName = userName,
-        userRole = userRole,
-        batchId = "BATCH-000",
-        startTime = "—",
-        sectionStatus = EquipmentStatus.STANDBY,
-        units = emptyList(),
-        kpis = emptyList(),
-        chart = DefecatorChartData(0f, CJ_FLOW_TARGET_LHR, CJ_FLOW_DESIGN_LHR),
-        processStability = 0.0
+        userName = userName, userRole = userRole, batchId = "BATCH-000", startTime = "—",
+        sectionStatus = DefecatorEquipStatus.STANDBY, units = emptyList(), kpis = emptyList(),
+        chart = DefecatorChartData(0f, CJ_FLOW_TARGET_LHR, CJ_FLOW_DESIGN_LHR), processStability = 0.0
     )
 
     private val _state = MutableStateFlow(
         DefecatorLiveState(
             dashboard = seedDashboard,
-            process = DefecatorProcessData(
-                pH = 0f,
-                djTankLevel = 0f,
-                djActivePumpA = 0f,
-                djStandbyPumpA = 0f,
-                heater1InletC = 0f,
-                heater1OutletC = 0f,
-                heater2OutletC = 0f,
-                heater3SpC = 0f,
-                heater3PvC = 0f,
-                heater3SteamValvePct = 0f,
-                srtBufferLevel = 0f
-            ),
-            floc = FlocculantData(
-                pump1Status = EquipmentStatus.STANDBY,
-                pump1SpeedPct = 0f,
-                pump2Status = EquipmentStatus.STANDBY,
-                pump2SpeedPct = 0f
-            ),
-            mudFilter = MudFilterData(
-                mudPump1Status = EquipmentStatus.STANDBY,
-                mudPump2Status = EquipmentStatus.STANDBY,
-                pcFilterVacuumPumpStatus = EquipmentStatus.STANDBY,
-                fc1SpeedPct = 0f, fc2SpeedPct = 0f, fc3SpeedPct = 0f
-            ),
-            clearJuice = ClearJuiceData(
-                tankLevel = 0f,
-                activePumpA = 0f,
-                standbyPumpA = 0f,
-                flow = 0f,
-                density = 0f,
-                filterOn = false,
-                heaterInletC = 0f,
-                heaterOutletC = 0f
-            ),
-            alerts = emptyList(),
-            connectionStatus = "CONNECTING",
-            lastUpdated = 0L
+            process = DefecatorProcessData(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
+            floc = DefecatorFlocData(DefecatorEquipStatus.STANDBY, 0f, DefecatorEquipStatus.STANDBY, 0f),
+            mudFilter = DefecatorMudData(DefecatorEquipStatus.STANDBY, DefecatorEquipStatus.STANDBY, DefecatorEquipStatus.STANDBY, 0f, 0f, 0f),
+            clearJuice = DefecatorCJData(0f, 0f, 0f, 0f, 0f, false, 0f, 0f),
+            alerts = emptyList(), connectionStatus = "CONNECTING", lastUpdated = 0L
         )
     )
     val state = _state.asStateFlow()
@@ -209,43 +163,18 @@ class DefecatorDedicatedViewModel(
         eventSource?.cancel()
         reconnectJob?.cancel()
 
-        val request = Request.Builder()
-            .url(SSE_URL)
-            .header("Accept", "text/event-stream")
-            .header("Cache-Control", "no-cache")
-            .build()
-
-        eventSource = EventSources.createFactory(sseClient)
-            .newEventSource(request, object : EventSourceListener() {
-
-                override fun onOpen(source: EventSource, response: Response) {
-                    _state.update { it.copy(connectionStatus = "CONNECTED") }
-                    Log.d(TAG, "SSE connected")
-                }
-
-                override fun onEvent(source: EventSource, id: String?, type: String?, data: String) {
-                    viewModelScope.launch(Dispatchers.Default) { parseAndUpdate(data) }
-                }
-
-                override fun onClosed(source: EventSource) {
-                    _state.update { it.copy(connectionStatus = "DISCONNECTED") }
-                    scheduleReconnect()
-                }
-
-                override fun onFailure(source: EventSource, t: Throwable?, response: Response?) {
-                    Log.e(TAG, "SSE failure: ${t?.message}")
-                    _state.update { it.copy(connectionStatus = "RECONNECTING") }
-                    scheduleReconnect()
-                }
-            })
+        val request = Request.Builder().url(SSE_URL).header("Accept", "text/event-stream").header("Cache-Control", "no-cache").build()
+        eventSource = EventSources.createFactory(sseClient).newEventSource(request, object : EventSourceListener() {
+            override fun onOpen(source: EventSource, response: Response) { _state.update { it.copy(connectionStatus = "CONNECTED") }; Log.d(TAG, "SSE connected") }
+            override fun onEvent(source: EventSource, id: String?, type: String?, data: String) { viewModelScope.launch(Dispatchers.Default) { parseAndUpdate(data) } }
+            override fun onClosed(source: EventSource) { _state.update { it.copy(connectionStatus = "DISCONNECTED") }; scheduleReconnect() }
+            override fun onFailure(source: EventSource, t: Throwable?, response: Response?) { Log.e(TAG, "SSE failure: ${t?.message}"); _state.update { it.copy(connectionStatus = "RECONNECTING") }; scheduleReconnect() }
+        })
     }
 
     private fun scheduleReconnect() {
         if (reconnectJob?.isActive == true) return
-        reconnectJob = viewModelScope.launch {
-            delay(RECONNECT_DELAY_MS)
-            startStream()
-        }
+        reconnectJob = viewModelScope.launch { delay(RECONNECT_DELAY_MS); startStream() }
     }
 
     private fun parseAndUpdate(rawData: String) {
@@ -253,285 +182,87 @@ class DefecatorDedicatedViewModel(
             val json = rawData.trimStart().removePrefix("data:").trim()
             if (json.isEmpty() || json == ":") return
 
-            // Uses the same IndustrialTelemetryRaw you already use in Mill VM
-            val payload = gson.fromJson(json, IndustrialTelemetryRaw::class.java) ?: return
+            val payload = gson.fromJson(json, DefecatorSsePayload::class.java) ?: return
             val tags = payload.tags ?: return
 
             fun tagAny(vararg keys: String): Float {
-                for (k in keys) {
-                    val v = tags[k]
-                    if (v != null) return v.toFloat()
-                }
+                for (k in keys) { val v = tags[k]; if (v != null) return v.toFloat() }
                 return 0f
             }
 
-            // -------------------- DEFECATOR PROCESS --------------------
             val pH = tagAny("Deficator_pH", "Defecator_pH")
-
             val djTankLevel = tagAny("DJTank_Level", "DJTank_Level_Pct")
             val djActiveA = tagAny("DJTank_Pump(Active)_amps", "DJTank_ActivePump_A")
             val djStandbyA = tagAny("DJTank_Pump(Standby)_amps", "DJTank_StandbyPump_A")
-
             val h1In = tagAny("DJHeater1_InletTemp")
             val h1Out = tagAny("DJHeater1_OutletTemp")
             val h2Out = tagAny("DJHeater2_OutletTemp")
             val h3Sp = tagAny("DJHeater3_Temp_SP")
             val h3Pv = tagAny("DJHeater3_Temp_PV")
             val steamValve = tagAny("DJFinalHeater3_SteamCtrlValve")
-
             val srtBuffer = tagAny("SRT_BufferTank_Level_LT")
 
-            val process = DefecatorProcessData(
-                pH = pH,
-                djTankLevel = djTankLevel,
-                djActivePumpA = djActiveA,
-                djStandbyPumpA = djStandbyA,
-                heater1InletC = h1In,
-                heater1OutletC = h1Out,
-                heater2OutletC = h2Out,
-                heater3SpC = h3Sp,
-                heater3PvC = h3Pv,
-                heater3SteamValvePct = steamValve,
-                srtBufferLevel = srtBuffer
-            )
+            val process = DefecatorProcessData(pH, djTankLevel, djActiveA, djStandbyA, h1In, h1Out, h2Out, h3Sp, h3Pv, steamValve, srtBuffer)
 
             val phFault = (pH != 0f) && (pH < PH_MIN_OK || pH > PH_MAX_OK)
-            val djPumpFault = djActiveA in 0f..PUMP_NEAR_ZERO_A
+            val djPumpFault = djActiveA in 0.01f..PUMP_NEAR_ZERO_A
             val heater3Dev = abs(h3Pv - h3Sp)
             val heater3Fault = (h3Sp > 0f) && (heater3Dev > HEATER3_DEV_WARN_C)
 
-            // -------------------- FLOCCULANT --------------------
-            val flocc1StatusRaw = tagAny("Flocc_Pump1_Status")
-            val flocc2StatusRaw = tagAny("Flocc_Pump2_Status")
-            val flocc1Speed = tagAny("Flocc_Pump1_VFD_Speed")
-            val flocc2Speed = tagAny("Flocc_Pump2_VFD_Speed")
+            fun statusFrom01(x: Float): DefecatorEquipStatus = if (x >= 1f) DefecatorEquipStatus.RUNNING else DefecatorEquipStatus.STANDBY
 
-            fun statusFrom01(x: Float): EquipmentStatus =
-                if (x >= 1f) EquipmentStatus.RUNNING else EquipmentStatus.STANDBY
-
-            val floc = FlocculantData(
-                pump1Status = statusFrom01(flocc1StatusRaw),
-                pump1SpeedPct = flocc1Speed,
-                pump2Status = statusFrom01(flocc2StatusRaw),
-                pump2SpeedPct = flocc2Speed
-            )
-
-            // -------------------- MUD / FILTER --------------------
-            val mud1Raw = tagAny("MudPump1_Status (DOL Active)")
-            val mud2Raw = tagAny("MudPump2_Status (DOL Standby)")
-            val pcVacRaw = tagAny("PcFilter_VacuumPump_Status(DOL)")
-
+            val floc = DefecatorFlocData(statusFrom01(tagAny("Flocc_Pump1_Status")), tagAny("Flocc_Pump1_VFD_Speed"), statusFrom01(tagAny("Flocc_Pump2_Status")), tagAny("Flocc_Pump2_VFD_Speed"))
             val fc1 = tagAny("FC1(VFD_Motor)")
-            val fc2 = tagAny("FC2(VFD_Motor)")
-            val fc3 = tagAny("FC3(VFD_Motor)")
+            val mudFilter = DefecatorMudData(statusFrom01(tagAny("MudPump1_Status (DOL Active)")), statusFrom01(tagAny("MudPump2_Status (DOL Standby)")), statusFrom01(tagAny("PcFilter_VacuumPump_Status(DOL)")), fc1, tagAny("FC2(VFD_Motor)"), tagAny("FC3(VFD_Motor)"))
 
-            val mudFilter = MudFilterData(
-                mudPump1Status = statusFrom01(mud1Raw),
-                mudPump2Status = statusFrom01(mud2Raw),
-                pcFilterVacuumPumpStatus = statusFrom01(pcVacRaw),
-                fc1SpeedPct = fc1,
-                fc2SpeedPct = fc2,
-                fc3SpeedPct = fc3
-            )
-
-            // -------------------- CLEAR JUICE (still part of clarification) --------------------
-            val cjTank = tagAny("Clear Juice Tank Level")
-            val cjActiveA = tagAny("CJ_pump (Active)")
-            val cjStandbyA = tagAny("CJ_pump (Standby)")
             val cjFlowRaw = tagAny("CJ_JuiceFlow")
-            val cjDensity = tagAny("CJ_JuiceDensity")
-            val cjFilter = tagAny("CJ_Filter")
-            val cjHIn = tagAny("CJ_Heater_inlet_temp")
-            val cjHOut = tagAny("CJ_Heater_Outlet_temp")
-
-            // If CJ flow is small (like 9.12), it’s often m³/hr -> convert to L/hr
             val cjFlowLhr = if (cjFlowRaw in 0f..200f) cjFlowRaw * 1000f else cjFlowRaw
 
-            val clearJuice = ClearJuiceData(
-                tankLevel = cjTank,
-                activePumpA = cjActiveA,
-                standbyPumpA = cjStandbyA,
-                flow = cjFlowLhr,
-                density = cjDensity,
-                filterOn = cjFilter >= 1f,
-                heaterInletC = cjHIn,
-                heaterOutletC = cjHOut
-            )
+            val clearJuice = DefecatorCJData(tagAny("Clear Juice Tank Level"), tagAny("CJ_pump (Active)"), tagAny("CJ_pump (Standby)"), cjFlowLhr, tagAny("CJ_JuiceDensity"), tagAny("CJ_Filter") >= 1f, tagAny("CJ_Heater_inlet_temp"), tagAny("CJ_Heater_Outlet_temp"))
 
-            // -------------------- BUILD “UNITS” LIST FOR UI --------------------
-            fun pumpStatusFromAmps(a: Float): EquipmentStatus = when {
-                a == 0f -> EquipmentStatus.STANDBY
-                a in 0f..PUMP_NEAR_ZERO_A -> EquipmentStatus.FAULT
-                else -> EquipmentStatus.RUNNING
-            }
+            fun pumpStatusFromAmps(a: Float): DefecatorEquipStatus = when { a == 0f -> DefecatorEquipStatus.STANDBY; a in 0f..PUMP_NEAR_ZERO_A -> DefecatorEquipStatus.FAULT; else -> DefecatorEquipStatus.RUNNING }
 
             val units = listOf(
-                EquipmentData(
-                    name = "Defecator pH",
-                    value = if (pH == 0f) "—" else "%.2f".format(pH),
-                    statusText = if (phFault) "Out of spec" else "OK",
-                    status = if (phFault) EquipmentStatus.FAULT else EquipmentStatus.HEALTHY
-                ),
-                EquipmentData(
-                    name = "DJ Active Pump",
-                    value = "%.3f A".format(djActiveA),
-                    statusText = if (djPumpFault) "Near-zero current" else "Running",
-                    status = pumpStatusFromAmps(djActiveA)
-                ),
-                EquipmentData(
-                    name = "Floc Pump 1",
-                    value = "%.1f %%".format(flocc1Speed),
-                    statusText = if (floc.pump1Status == EquipmentStatus.RUNNING) "Dosing" else "Idle",
-                    status = floc.pump1Status
-                ),
-                EquipmentData(
-                    name = "Mud Pump 1",
-                    value = if (mudFilter.mudPump1Status == EquipmentStatus.RUNNING) "ON" else "OFF",
-                    statusText = "DOL",
-                    status = mudFilter.mudPump1Status
-                ),
-                EquipmentData(
-                    name = "FC1 (VFD)",
-                    value = "%.1f %%".format(fc1),
-                    statusText = if (fc1 > 1f) "Running" else "Stopped",
-                    status = if (fc1 > 1f) EquipmentStatus.RUNNING else EquipmentStatus.STANDBY
-                )
+                DefecatorEquipData("Defecator pH", if (pH == 0f) "—" else "%.2f".format(pH), if (phFault) "Out of spec" else "OK", if (phFault) DefecatorEquipStatus.FAULT else DefecatorEquipStatus.HEALTHY),
+                DefecatorEquipData("DJ Active Pump", "%.3f A".format(djActiveA), if (djPumpFault) "Near-zero current" else "Running", pumpStatusFromAmps(djActiveA)),
+                DefecatorEquipData("Floc Pump 1", "%.1f %%".format(floc.pump1SpeedPct), if (floc.pump1Status == DefecatorEquipStatus.RUNNING) "Dosing" else "Idle", floc.pump1Status),
+                DefecatorEquipData("Mud Pump 1", if (mudFilter.mudPump1Status == DefecatorEquipStatus.RUNNING) "ON" else "OFF", "DOL", mudFilter.mudPump1Status),
+                DefecatorEquipData("FC1 (VFD)", "%.1f %%".format(fc1), if (fc1 > 1f) "Running" else "Stopped", if (fc1 > 1f) DefecatorEquipStatus.RUNNING else DefecatorEquipStatus.STANDBY)
             )
 
-            // -------------------- PROCESS STABILITY SCORE --------------------
-            val phScore = if (pH == 0f) 0.0 else (100.0 - (abs(pH - PH_TARGET) * 80.0)).coerceIn(0.0, 100.0)
-            val heaterScore = if (h3Sp <= 0f) 0.0 else (100.0 - (heater3Dev * 10.0)).coerceIn(0.0, 100.0)
-            val stability = (0.6 * phScore + 0.4 * heaterScore).coerceIn(0.0, 100.0)
+            val stability = (0.6 * (if (pH == 0f) 0.0 else (100.0 - (abs(pH - PH_TARGET) * 80.0)).coerceIn(0.0, 100.0)) + 0.4 * (if (h3Sp <= 0f) 0.0 else (100.0 - (heater3Dev * 10.0)).coerceIn(0.0, 100.0))).coerceIn(0.0, 100.0)
 
-            // -------------------- KPI LIST --------------------
-            fun trendHistory(cur: Float): List<Float> =
-                listOf(cur * 0.96f, cur * 0.98f, cur * 0.99f, cur, cur * 1.01f, cur)
+            fun trendHistory(cur: Float): List<Float> = listOf(cur * 0.96f, cur * 0.98f, cur * 0.99f, cur, cur * 1.01f, cur)
 
             val kpis = listOf(
-                DefecatorKpiData(
-                    title = "Defecator pH",
-                    value = if (pH == 0f) "—" else "%.2f".format(pH),
-                    changeString = "%.2f".format(pH - PH_TARGET),
-                    isGood = !phFault && pH != 0f,
-                    trendHistory = trendHistory(if (pH == 0f) PH_TARGET else pH)
-                ),
-                DefecatorKpiData(
-                    title = "Heater-3 PV",
-                    value = "%.1f °C".format(h3Pv),
-                    changeString = "Δ%.1f°C".format(heater3Dev),
-                    isGood = !heater3Fault,
-                    trendHistory = trendHistory(h3Pv)
-                ),
-                DefecatorKpiData(
-                    title = "CJ Flow",
-                    value = "%,.0f L/hr".format(cjFlowLhr),
-                    changeString = "%.1f%%".format(
-                        if (CJ_FLOW_TARGET_LHR == 0f) 0f else (cjFlowLhr - CJ_FLOW_TARGET_LHR) / CJ_FLOW_TARGET_LHR * 100f
-                    ),
-                    isGood = cjFlowLhr >= CJ_FLOW_TARGET_LHR * 0.9f,
-                    trendHistory = trendHistory(cjFlowLhr)
-                ),
-                DefecatorKpiData(
-                    title = "Steam Valve",
-                    value = "%.1f %%".format(steamValve),
-                    changeString = "",
-                    isGood = steamValve in 10f..90f,
-                    trendHistory = trendHistory(steamValve)
-                )
+                DefecatorKpiData("Defecator pH", if (pH == 0f) "—" else "%.2f".format(pH), "%.2f".format(pH - PH_TARGET), !phFault && pH != 0f, trendHistory(if (pH == 0f) PH_TARGET else pH)),
+                DefecatorKpiData("Heater-3 PV", "%.1f °C".format(h3Pv), "Δ%.1f°C".format(heater3Dev), !heater3Fault, trendHistory(h3Pv)),
+                DefecatorKpiData("CJ Flow", "%,.0f L/hr".format(cjFlowLhr), "%.1f%%".format(if (CJ_FLOW_TARGET_LHR == 0f) 0f else (cjFlowLhr - CJ_FLOW_TARGET_LHR) / CJ_FLOW_TARGET_LHR * 100f), cjFlowLhr >= CJ_FLOW_TARGET_LHR * 0.9f, trendHistory(cjFlowLhr)),
+                DefecatorKpiData("Steam Valve", "%.1f %%".format(steamValve), "", steamValve in 10f..90f, trendHistory(steamValve))
             )
 
-            // -------------------- CHART (use CJ flow as Actual/Target/Design) --------------------
-            val chart = DefecatorChartData(
-                actual = cjFlowLhr,
-                target = CJ_FLOW_TARGET_LHR,
-                design = CJ_FLOW_DESIGN_LHR
-            )
-
-            // -------------------- ALERTS --------------------
             val alerts = buildList {
                 if (phFault) add("⚠ Defecator pH out of spec: %.2f".format(pH))
                 if (djPumpFault) add("🔴 DJ Active Pump near-zero: %.3f A".format(djActiveA))
                 if (heater3Fault) add("⚠ Heater-3 deviation: Δ%.1f°C (SP %.1f / PV %.1f)".format(heater3Dev, h3Sp, h3Pv))
             }
 
-            val sectionStatus = when {
-                phFault || djPumpFault || heater3Fault -> EquipmentStatus.FAULT
-                else -> EquipmentStatus.RUNNING
-            }
-
-            val tsMs = ((payload.timestamp ?: 0.0) * 1_000.0).toLong()
-            val batchId = deriveBatchId(tsMs)
-            val startTime = deriveShiftStart(tsMs)
-
-            val dashboardUpdated = _state.value.dashboard.copy(
-                userName = userName,
-                userRole = userRole,
-                batchId = batchId,
-                startTime = startTime,
-                sectionStatus = sectionStatus,
-                units = units,
-                kpis = kpis,
-                chart = chart,
-                processStability = stability
-            )
-
             _state.update {
                 it.copy(
-                    dashboard = dashboardUpdated,
-                    process = process,
-                    floc = floc,
-                    mudFilter = mudFilter,
-                    clearJuice = clearJuice,
-                    alerts = alerts,
-                    connectionStatus = "CONNECTED",
-                    lastUpdated = System.currentTimeMillis()
+                    dashboard = it.dashboard.copy(
+                        batchId = "BATCH-${java.text.SimpleDateFormat("ddMM", java.util.Locale.US).format(java.util.Date(((payload.timestamp ?: 0.0) * 1_000.0).toLong()))}",
+                        sectionStatus = if (alerts.isNotEmpty()) DefecatorEquipStatus.FAULT else DefecatorEquipStatus.RUNNING,
+                        units = units, kpis = kpis, chart = DefecatorChartData(cjFlowLhr, CJ_FLOW_TARGET_LHR, CJ_FLOW_DESIGN_LHR), processStability = stability
+                    ),
+                    process = process, floc = floc, mudFilter = mudFilter, clearJuice = clearJuice, alerts = alerts, connectionStatus = "CONNECTED", lastUpdated = System.currentTimeMillis()
                 )
             }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Parse error: ${e.message}", e)
-        }
-    }
-
-    private fun deriveBatchId(tsMs: Long): String {
-        if (tsMs <= 0) return "BATCH-000"
-        val day = java.text.SimpleDateFormat("ddMM", java.util.Locale.US)
-            .format(java.util.Date(tsMs))
-        return "BATCH-$day"
-    }
-
-    private fun deriveShiftStart(tsMs: Long): String {
-        if (tsMs <= 0) return "—"
-        val cal = java.util.Calendar.getInstance().apply { timeInMillis = tsMs }
-        return when (cal.get(java.util.Calendar.HOUR_OF_DAY)) {
-            in 6..13  -> "06:00 AM"
-            in 14..21 -> "02:00 PM"
-            else      -> "10:00 PM"
-        }
+        } catch (e: Exception) { Log.e(TAG, "Parse error: ${e.message}", e) }
     }
 
     private fun buildInsecureClient(): OkHttpClient {
-        val trustAll = arrayOf<TrustManager>(object : X509TrustManager {
-            override fun checkClientTrusted(c: Array<out X509Certificate>?, a: String?) {}
-            override fun checkServerTrusted(c: Array<out X509Certificate>?, a: String?) {}
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-        })
-        val ssl = SSLContext.getInstance("TLS").apply {
-            init(null, trustAll, SecureRandom())
-        }
-        return OkHttpClient.Builder()
-            .sslSocketFactory(ssl.socketFactory, trustAll[0] as X509TrustManager)
-            .hostnameVerifier { _, _ -> true }
-            .readTimeout(0, TimeUnit.MILLISECONDS)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(true)
-            .build()
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        eventSource?.cancel()
-        reconnectJob?.cancel()
-        sseClient.dispatcher.executorService.shutdown()
+        val trustAll = arrayOf<TrustManager>(object : X509TrustManager { override fun checkClientTrusted(c: Array<out X509Certificate>?, a: String?) {}; override fun checkServerTrusted(c: Array<out X509Certificate>?, a: String?) {}; override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf() })
+        val ssl = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
+        return OkHttpClient.Builder().sslSocketFactory(ssl.socketFactory, trustAll[0] as X509TrustManager).hostnameVerifier { _, _ -> true }.readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
     }
 }

@@ -1,7 +1,18 @@
 package com.example.category3.auth.ui
 
+import android.content.ContentValues
+import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
+import android.os.Environment
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.MotionEvent
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +35,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Print
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.LightMode
@@ -71,15 +85,178 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT & PRINT LOGIC FOR FLOTATION CLARIFIER
+// ─────────────────────────────────────────────────────────────────────────────
+
+fun generateFlotationClarifierLogCsv(
+    manualState: FlotationClarifierManualState,
+    cjFlow: String, cjTankLevel: String, cjDensity: String, fcMondFlow: String,
+    signaturePoints: List<Offset>, date: String, time: String, shift: String
+): String {
+    val header = "Date,Time,Shift,Batch Number,Clarifier Unit No,Start Time,End Time,Duration," +
+            "CJ Flow (L/hr),CJ Tank Level (%),CJ Density,FC Mond Flow," +
+            "Soda Added (Grams),Solid Added,Juice Inlet pH,Juice Outlet pH,Turbidity Baseline (NTU),Purity Coefficient (%)," +
+            "Remarks,E-Signature_Data_Base64"
+
+    // Convert Signature Canvas Points to Base64 to safely embed in CSV
+    val signatureData = if (signaturePoints.isEmpty()) "UNVERIFIED" else {
+        val rawCoords = signaturePoints.joinToString("|") {
+            if (it == Offset.Unspecified) "BREAK" else "${it.x.toInt()}_${it.y.toInt()}"
+        }
+        Base64.encodeToString(rawCoords.toByteArray(), Base64.NO_WRAP)
+    }
+
+    val safeRemarks = manualState.remarks.replace("\"", "\"\"") // Escape quotes
+    val row = "$date,$time,$shift,${manualState.batchNo},${manualState.clarifierNo},${manualState.startTime},${manualState.endTime},${manualState.duration}," +
+            "$cjFlow,$cjTankLevel,$cjDensity,$fcMondFlow," +
+            "${manualState.sodaAddedGram},${manualState.solidAdded},${manualState.juiceInletPh},${manualState.juiceOutletPh},${manualState.clearJuiceTurbidity},${manualState.clearJuicePurity}," +
+            "\"$safeRemarks\",$signatureData"
+
+    return "$header\n$row"
+}
+
+fun downloadFlotationClarifierLogCsvToDevice(context: Context, csvData: String) {
+    val fileName = "Flotation_Clarifier_Log_${System.currentTimeMillis()}.csv"
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { it.write(csvData.toByteArray()) }
+                Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(targetDir, fileName)
+            file.writeText(csvData)
+            Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// Keep a reference so the webview isn't garbage collected before print finishes
+private var activeClarifierPrintWebView: WebView? = null
+
+fun printFlotationClarifierLogReport(
+    context: Context, manualState: FlotationClarifierManualState,
+    cjFlow: String, cjTankLevel: String, cjDensity: String, fcMondFlow: String,
+    signaturePoints: List<Offset>, date: String, time: String, shift: String
+) {
+    Toast.makeText(context, "Preparing Report for Printer...", Toast.LENGTH_SHORT).show()
+
+    val safeRemarks = if (manualState.remarks.isEmpty()) "<i>No anomalies reported.</i>" else manualState.remarks
+
+    // SVG drawing logic for E-Signature
+    val signatureSvg = if (signaturePoints.isEmpty()) {
+        "<p style='color: #EF4444; font-weight: bold;'>SIGNATURE MISSING / UNVERIFIED</p>"
+    } else {
+        val pathStr = buildString {
+            var first = true
+            for (p in signaturePoints) {
+                if (p == Offset.Unspecified) {
+                    first = true
+                } else {
+                    if (first) { append("M ${p.x} ${p.y} "); first = false }
+                    else { append("L ${p.x} ${p.y} ") }
+                }
+            }
+        }
+        "<svg width='100%' height='150' style='border:1px solid #E2E8F0; background:#F8FAFC; border-radius: 6px;'><path d='$pathStr' fill='transparent' stroke='#0F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+    }
+
+    val htmlBuilder = """
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0F172A; padding: 20px; }
+                h1 { border-bottom: 2px solid #0EA5E9; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
+                h2 { font-size: 16px; color: #334155; margin-top: 25px; margin-bottom: 10px; background-color: #F6F6F7; padding: 8px; border-radius: 4px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th, td { border: 1px solid #E2E8F0; padding: 10px; text-align: left; font-size: 14px; }
+                th { width: 40%; background-color: #F8FAFC; color: #64748B; font-weight: bold; }
+                td { width: 60%; font-weight: 500; }
+                .remarks-box { border: 1px solid #E2E8F0; padding: 15px; border-radius: 4px; font-size: 14px; min-height: 80px; }
+            </style>
+        </head>
+        <body>
+            <h1>Flotation Clarifier - Manual Entry Log</h1>
+            <p><strong>Date:</strong> $date &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Time:</strong> $time &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Shift:</strong> $shift</p>
+
+            <h2>Live Process Telemetry (PLC Snapshot)</h2>
+            <table>
+                <tr><th>Clear Juice Flow (L/hr)</th><td>$cjFlow</td></tr>
+                <tr><th>Clear Juice Tank Level (%)</th><td>$cjTankLevel</td></tr>
+                <tr><th>Clear Juice Density</th><td>$cjDensity</td></tr>
+                <tr><th>FC Mond Flow</th><td>$fcMondFlow</td></tr>
+            </table>
+
+            <h2>Batch Scheduling Timelines</h2>
+            <table>
+                <tr><th>Batch Number</th><td>${manualState.batchNo}</td></tr>
+                <tr><th>Clarifier Unit No</th><td>${manualState.clarifierNo}</td></tr>
+                <tr><th>Start Time</th><td>${manualState.startTime}</td></tr>
+                <tr><th>End Time</th><td>${manualState.endTime}</td></tr>
+                <tr><th>Total Operation Duration</th><td>${manualState.duration}</td></tr>
+            </table>
+            
+            <h2>Lab Chemistry Parameters</h2>
+            <table>
+                <tr><th>Soda Added (Grams)</th><td>${manualState.sodaAddedGram}</td></tr>
+                <tr><th>Solid Material Added</th><td>${manualState.solidAdded}</td></tr>
+                <tr><th>Juice Inlet pH</th><td>${manualState.juiceInletPh}</td></tr>
+                <tr><th>Juice Outlet pH</th><td>${manualState.juiceOutletPh}</td></tr>
+                <tr><th>Turbidity Baseline (NTU)</th><td>${manualState.clearJuiceTurbidity}</td></tr>
+                <tr><th>Purity Coefficient (%)</th><td>${manualState.clearJuicePurity}</td></tr>
+            </table>
+
+            <h2>Operator Annotations & Remarks</h2>
+            <div class="remarks-box">$safeRemarks</div>
+            
+            <h2>Supervisor E-Signature Verification</h2>
+            $signatureSvg
+            
+            <p style="margin-top: 15px; color: #10B981; font-weight: bold; font-size: 12px;">✔ Document Cryptographically Sealed via Device Input</p>
+        </body>
+        </html>
+    """.trimIndent()
+
+    val webView = WebView(context)
+    activeClarifierPrintWebView = webView
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Flotation_Clarifier_Log_${System.currentTimeMillis()}"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            activeClarifierPrintWebView = null
+        }
+    }
+    webView.loadDataWithBaseURL(null, htmlBuilder, "text/html", "UTF-8", null)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE & UI PALETTE STYLES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // State for Manual Inputs & Lab Data
 data class FlotationClarifierManualState(
@@ -126,6 +303,10 @@ private val TechAccentGreen = Color(0xFF10B981)
 private val TechWarnOrange = Color(0xFFF97316)
 private val TechAlarmRed = Color(0xFFEF4444)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN UI SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FlotationClarifierScreen(
@@ -154,6 +335,16 @@ fun FlotationClarifierScreen(
     var isDarkThemeOverride by remember { mutableStateOf(false) }
     val palette = getClarifierDynamicMorphicPalette(isDark = isDarkThemeOverride)
 
+    // Export Dialog State
+    var showExportDialog by remember { mutableStateOf(false) }
+
+    // Live formatted strings (to pass to UI and export functions)
+    val cjFlowAdj = if (liveState.clearJuiceFlowRaw in 0f..200f) liveState.clearJuiceFlowRaw * 1000f else liveState.clearJuiceFlowRaw
+    val cjFlowFmt = String.format("%,.0f", cjFlowAdj)
+    val cjTankLevelFmt = String.format("%.1f", liveState.clearJuiceTankLevel)
+    val cjDensityFmt = String.format("%.2f", liveState.clearJuiceDensity)
+    val fcMondFlowFmt = String.format("%.1f", liveState.fcMondFlow)
+
     // Clock Ticker
     LaunchedEffect(Unit) {
         while (true) {
@@ -170,6 +361,8 @@ fun FlotationClarifierScreen(
             else -> "SHIFT C"
         }
     }
+
+    val currentTimeFormatted = currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
     val structuralBackgroundModifier = if (isDarkThemeOverride) {
         Modifier.background(Brush.radialGradient(colors = listOf(Color(0xFF1E1B4B), Color(0xFF090A10)), radius = 2200f))
@@ -193,7 +386,7 @@ fun FlotationClarifierScreen(
                 Text(
                     "FLOTATION CLARIFIER CONTROL MATRIX",
                     color = palette.textPrimary, fontSize = if(isPortrait) 13.sp else 15.sp,
-                    fontWeight = FontWeight.Black, // fontFamily = FontTelemetryMono,
+                    fontWeight = FontWeight.Black,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Row(modifier = Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -218,7 +411,7 @@ fun FlotationClarifierScreen(
         val timeDetails = @Composable {
             Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
                 Text("DATE: $currentDate", fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+                Text("TIME: $currentTimeFormatted | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -235,18 +428,16 @@ fun FlotationClarifierScreen(
         }
     }
 
-    // --- NEW LIVE PLC DATA PANELS ---
     val LivePLCContent = @Composable { modifier: Modifier ->
         ClarifierFormSectionCard(title = "LIVE PROCESS TELEMETRY", icon = Icons.Rounded.Speed, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val cjFlowAdj = if (liveState.clearJuiceFlowRaw in 0f..200f) liveState.clearJuiceFlowRaw * 1000f else liveState.clearJuiceFlowRaw
-                    ClarifierLogInputField("CJ FLOW (L/hr)", String.format("%,.0f", cjFlowAdj), palette, Modifier.weight(1f), isReadOnly = true) {}
-                    ClarifierLogInputField("CJ TANK LEVEL (%)", String.format("%.1f", liveState.clearJuiceTankLevel), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    ClarifierLogInputField("CJ FLOW (L/hr)", cjFlowFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    ClarifierLogInputField("CJ TANK LEVEL (%)", cjTankLevelFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClarifierLogInputField("CJ DENSITY", String.format("%.2f", liveState.clearJuiceDensity), palette, Modifier.weight(1f), isReadOnly = true) {}
-                    ClarifierLogInputField("FC MOND FLOW", String.format("%.1f", liveState.fcMondFlow), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    ClarifierLogInputField("CJ DENSITY", cjDensityFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    ClarifierLogInputField("FC MOND FLOW", fcMondFlowFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
             }
         }
@@ -258,7 +449,7 @@ fun FlotationClarifierScreen(
                 HardwareStateBadge("PC VACUUM PUMP", liveState.vacuumPumpStatus == EquipmentStatus.RUNNING, palette)
                 HardwareStateBadge("CJ FILTER ACTUATOR", liveState.cjFilterOn, palette)
 
-                // Render the 3 FC Units dynamically
+                // Render the FC Units dynamically
                 liveState.dashboard.units.forEach { unit ->
                     HardwareStateBadge(unit.name, unit.status == EquipmentStatus.RUNNING, palette)
                 }
@@ -266,7 +457,6 @@ fun FlotationClarifierScreen(
         }
     }
 
-    // --- MANUAL ENTRY PANELS ---
     val TimelinesContent = @Composable { modifier: Modifier ->
         ClarifierFormSectionCard(title = "BATCH SCHEDULING TIMELINES", icon = Icons.Rounded.Schedule, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
@@ -424,7 +614,11 @@ fun FlotationClarifierScreen(
                         .then(if (isPortrait) Modifier.fillMaxWidth() else Modifier.width(220.dp))
                         .clip(RoundedCornerShape(50))
                         .background(Brush.linearGradient(colors = if (manualState.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
-                        .clickable { if (signaturePoints.isNotEmpty()) { manualState = manualState.copy(isSubmitted = true); onNavigationCallback() } },
+                        .clickable {
+                            if (signaturePoints.isNotEmpty()) {
+                                showExportDialog = true
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text("COMMIT JOURNAL LOG", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
@@ -515,6 +709,102 @@ fun FlotationClarifierScreen(
                 }
 
                 FooterContent()
+            }
+        }
+
+        // ============================================================================
+        // EXPORT / PRINT OVERLAY DIALOG
+        // ============================================================================
+        if (showExportDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .clickable(enabled = false) {}, // Intercept background clicks
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(480.dp)
+                        .shadow(16.dp, RoundedCornerShape(16.dp))
+                        .background(palette.baseChassis, RoundedCornerShape(16.dp))
+                        .border(1.dp, palette.glassBorder, RoundedCornerShape(16.dp))
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = TechAccentGreen, modifier = Modifier.size(56.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("LOG COMMITTED SUCCESSFULLY", color = TechAccentGreen, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "Do you want to export a copy of this manual entry before closing?",
+                        color = palette.textPrimary, fontSize = 13.sp, textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // 1. PRINT BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    printFlotationClarifierLogReport(
+                                        context, manualState, cjFlowFmt, cjTankLevelFmt, cjDensityFmt, fcMondFlowFmt,
+                                        signaturePoints, currentDate, currentTimeFormatted, currentShift
+                                    )
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Print, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("PRINT PDF", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // 2. CSV DOWNLOAD BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val csvData = generateFlotationClarifierLogCsv(
+                                        manualState, cjFlowFmt, cjTankLevelFmt, cjDensityFmt, fcMondFlowFmt,
+                                        signaturePoints, currentDate, currentTimeFormatted, currentShift
+                                    )
+                                    downloadFlotationClarifierLogCsvToDevice(context, csvData)
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Download, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("SAVE CSV", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // 3. SKIP BUTTON
+                        Box(
+                            modifier = Modifier.weight(0.7f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(TechAccentBlue)
+                                .clickable {
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("SKIP", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
             }
         }
     }

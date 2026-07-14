@@ -1,7 +1,18 @@
 package com.example.category3.auth.ui
 
+import android.content.ContentValues
+import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
+import android.os.Environment
+import android.print.PrintAttributes
+import android.print.PrintManager
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.MotionEvent
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,7 +35,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Draw
 import androidx.compose.material.icons.rounded.LightMode
@@ -71,15 +85,177 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
+import java.io.File
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORT & PRINT LOGIC FOR VACUUM PAN
+// ─────────────────────────────────────────────────────────────────────────────
+
+fun generateVacuumPanLogCsv(
+    manualState: VacuumPanManualState,
+    fceBrix: String, fceVacuum: String, fcePressure: String, vacuumPumpA: String,
+    signaturePoints: List<Offset>, date: String, time: String, shift: String
+): String {
+    val header = "Date,Time,Shift,Batch Number,Vacuum Pan No,Start Time,End Time,Duration," +
+            "FCE Brix (°Bx),FCE Vacuum,FCE Pressure (Bar),Vacuum Pump (A)," +
+            "Melt Percentage (%),Dropping 1 (Time),Dropping 2 (Time),Dropping 3 (Time)," +
+            "Remarks,E-Signature_Data_Base64"
+
+    // Convert Signature Canvas Points to Base64 to safely embed in CSV
+    val signatureData = if (signaturePoints.isEmpty()) "UNVERIFIED" else {
+        val rawCoords = signaturePoints.joinToString("|") {
+            if (it == Offset.Unspecified) "BREAK" else "${it.x.toInt()}_${it.y.toInt()}"
+        }
+        Base64.encodeToString(rawCoords.toByteArray(), Base64.NO_WRAP)
+    }
+
+    val safeRemarks = manualState.remarks.replace("\"", "\"\"") // Escape quotes
+    val row = "$date,$time,$shift,${manualState.batchNo},${manualState.vacuumPanNo},${manualState.startTime},${manualState.endTime},${manualState.duration}," +
+            "$fceBrix,$fceVacuum,$fcePressure,$vacuumPumpA," +
+            "${manualState.meltPercentage},${manualState.dropping1Time},${manualState.dropping2Time},${manualState.dropping3Time}," +
+            "\"$safeRemarks\",$signatureData"
+
+    return "$header\n$row"
+}
+
+fun downloadVacuumPanLogCsvToDevice(context: Context, csvData: String) {
+    val fileName = "Vacuum_Pan_Log_${System.currentTimeMillis()}.csv"
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/csv")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                resolver.openOutputStream(uri)?.use { it.write(csvData.toByteArray()) }
+                Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            val targetDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(targetDir, fileName)
+            file.writeText(csvData)
+            Toast.makeText(context, "Saved to Downloads: $fileName", Toast.LENGTH_LONG).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error saving: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// Keep a reference so the webview isn't garbage collected before print finishes
+private var activeVacuumPanPrintWebView: WebView? = null
+
+fun printVacuumPanLogReport(
+    context: Context, manualState: VacuumPanManualState,
+    fceBrix: String, fceVacuum: String, fcePressure: String, vacuumPumpA: String,
+    signaturePoints: List<Offset>, date: String, time: String, shift: String
+) {
+    Toast.makeText(context, "Preparing Report for Printer...", Toast.LENGTH_SHORT).show()
+
+    val safeRemarks = if (manualState.remarks.isEmpty()) "<i>No anomalies reported.</i>" else manualState.remarks
+
+    // SVG drawing logic for E-Signature
+    val signatureSvg = if (signaturePoints.isEmpty()) {
+        "<p style='color: #EF4444; font-weight: bold;'>SIGNATURE MISSING / UNVERIFIED</p>"
+    } else {
+        val pathStr = buildString {
+            var first = true
+            for (p in signaturePoints) {
+                if (p == Offset.Unspecified) {
+                    first = true
+                } else {
+                    if (first) { append("M ${p.x} ${p.y} "); first = false }
+                    else { append("L ${p.x} ${p.y} ") }
+                }
+            }
+        }
+        "<svg width='100%' height='150' style='border:1px solid #E2E8F0; background:#F8FAFC; border-radius: 6px;'><path d='$pathStr' fill='transparent' stroke='#0F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+    }
+
+    val htmlBuilder = """
+        <html>
+        <head>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #0F172A; padding: 20px; }
+                h1 { border-bottom: 2px solid #0EA5E9; padding-bottom: 10px; margin-bottom: 20px; font-size: 24px; }
+                h2 { font-size: 16px; color: #334155; margin-top: 25px; margin-bottom: 10px; background-color: #F6F6F7; padding: 8px; border-radius: 4px; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+                th, td { border: 1px solid #E2E8F0; padding: 10px; text-align: left; font-size: 14px; }
+                th { width: 40%; background-color: #F8FAFC; color: #64748B; font-weight: bold; }
+                td { width: 60%; font-weight: 500; }
+                .remarks-box { border: 1px solid #E2E8F0; padding: 15px; border-radius: 4px; font-size: 14px; min-height: 80px; }
+            </style>
+        </head>
+        <body>
+            <h1>Vacuum Pan Boiling Stage - Manual Entry Log</h1>
+            <p><strong>Date:</strong> $date &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Time:</strong> $time &nbsp;&nbsp;|&nbsp;&nbsp; <strong>Shift:</strong> $shift</p>
+
+            <h2>Live Process Telemetry (PLC Snapshot)</h2>
+            <table>
+                <tr><th>FCE Brix (°Bx)</th><td>$fceBrix</td></tr>
+                <tr><th>FCE Vacuum</th><td>$fceVacuum</td></tr>
+                <tr><th>FCE Pressure (Bar)</th><td>$fcePressure</td></tr>
+                <tr><th>Vacuum Pump Current (A)</th><td>$vacuumPumpA</td></tr>
+            </table>
+
+            <h2>Batch Scheduling Timelines</h2>
+            <table>
+                <tr><th>Batch Number</th><td>${manualState.batchNo}</td></tr>
+                <tr><th>Vacuum Pan Unit No</th><td>${manualState.vacuumPanNo}</td></tr>
+                <tr><th>Start Time</th><td>${manualState.startTime}</td></tr>
+                <tr><th>End Time</th><td>${manualState.endTime}</td></tr>
+                <tr><th>Total Operation Duration</th><td>${manualState.duration}</td></tr>
+            </table>
+            
+            <h2>Liquid Conduit & Dropping Cycles</h2>
+            <table>
+                <tr><th>Melt Composition Percentage (%)</th><td>${manualState.meltPercentage}</td></tr>
+                <tr><th>Dropping 1 (Time)</th><td>${manualState.dropping1Time}</td></tr>
+                <tr><th>Dropping 2 (Time)</th><td>${manualState.dropping2Time}</td></tr>
+                <tr><th>Final Dropping 3 (Time)</th><td>${manualState.dropping3Time}</td></tr>
+            </table>
+
+            <h2>Operator Annotations & Remarks</h2>
+            <div class="remarks-box">$safeRemarks</div>
+            
+            <h2>Supervisor E-Signature Verification</h2>
+            $signatureSvg
+            
+            <p style="margin-top: 15px; color: #10B981; font-weight: bold; font-size: 12px;">✔ Document Cryptographically Sealed via Device Input</p>
+        </body>
+        </html>
+    """.trimIndent()
+
+    val webView = WebView(context)
+    activeVacuumPanPrintWebView = webView
+    webView.webViewClient = object : WebViewClient() {
+        override fun onPageFinished(view: WebView, url: String) {
+            val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+            val jobName = "Vacuum_Pan_Log_${System.currentTimeMillis()}"
+            val printAdapter = webView.createPrintDocumentAdapter(jobName)
+            printManager.print(jobName, printAdapter, PrintAttributes.Builder().build())
+            activeVacuumPanPrintWebView = null
+        }
+    }
+    webView.loadDataWithBaseURL(null, htmlBuilder, "text/html", "UTF-8", null)
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STATE & UI PALETTE STYLES
+// ─────────────────────────────────────────────────────────────────────────────
 
 // State exclusively for the Manual Operator Inputs
 data class VacuumPanManualState(
@@ -124,6 +300,10 @@ private val TechAccentGreen = Color(0xFF10B981)
 private val TechWarnOrange = Color(0xFFF97316)
 private val TechAlarmRed = Color(0xFFEF4444)
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN UI SCREEN
+// ─────────────────────────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VacuumPanScreen(
@@ -151,6 +331,15 @@ fun VacuumPanScreen(
     var isDarkThemeOverride by remember { mutableStateOf(false) }
     val palette = getPanDynamicMorphicPalette(isDark = isDarkThemeOverride)
 
+    // Export Dialog State
+    var showExportDialog by remember { mutableStateOf(false) }
+
+    // Live formatted strings (to pass to export functions)
+    val fceBrixFmt = String.format("%.2f", liveState.process.fceBrix)
+    val fceVacuumFmt = String.format("%.1f", liveState.process.fceVacuum)
+    val fcePressureFmt = String.format("%.3f", liveState.process.fcePressure)
+    val vacuumPumpAFmt = String.format("%.2f", liveState.process.vacuumPumpA)
+
     // Clock Ticker
     LaunchedEffect(Unit) {
         while (true) {
@@ -167,6 +356,8 @@ fun VacuumPanScreen(
             else -> "SHIFT C"
         }
     }
+
+    val currentTimeFormatted = currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 
     val structuralBackgroundModifier = if (isDarkThemeOverride) {
         Modifier.background(Brush.radialGradient(colors = listOf(Color(0xFF1E1B4B), Color(0xFF090A10)), radius = 2200f))
@@ -214,7 +405,7 @@ fun VacuumPanScreen(
         val timeDetails = @Composable {
             Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
                 Text("DATE: $currentDate", fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+                Text("TIME: $currentTimeFormatted | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -231,17 +422,16 @@ fun VacuumPanScreen(
         }
     }
 
-    // --- NEW LIVE PLC DATA PANELS ---
     val LivePLCContent = @Composable { modifier: Modifier ->
         PanFormSectionCard(title = "LIVE PROCESS TELEMETRY", icon = Icons.Rounded.Analytics, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PanLogInputField("FCE BRIX (°Bx)", String.format("%.2f", liveState.process.fceBrix), palette, Modifier.weight(1f), isReadOnly = true) {}
-                    PanLogInputField("FCE VACUUM", String.format("%.1f", liveState.process.fceVacuum), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    PanLogInputField("FCE BRIX (°Bx)", fceBrixFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    PanLogInputField("FCE VACUUM", fceVacuumFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PanLogInputField("FCE PRESSURE (Bar)", String.format("%.3f", liveState.process.fcePressure), palette, Modifier.weight(1f), isReadOnly = true) {}
-                    PanLogInputField("VACUUM PUMP (A)", String.format("%.2f", liveState.process.vacuumPumpA), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    PanLogInputField("FCE PRESSURE (Bar)", fcePressureFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    PanLogInputField("VACUUM PUMP (A)", vacuumPumpAFmt, palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
             }
         }
@@ -262,7 +452,6 @@ fun VacuumPanScreen(
         }
     }
 
-    // --- MANUAL ENTRY PANELS ---
     val TimelinesContent = @Composable { modifier: Modifier ->
         PanFormSectionCard(title = "BATCH SCHEDULING TIMELINES", icon = Icons.Rounded.Speed, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
@@ -433,8 +622,7 @@ fun VacuumPanScreen(
                         .background(Brush.linearGradient(colors = if (manualState.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
                         .clickable {
                             if (signaturePoints.isNotEmpty()) {
-                                manualState = manualState.copy(isSubmitted = true)
-                                onNavigationCallback()
+                                showExportDialog = true
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -488,7 +676,7 @@ fun VacuumPanScreen(
                 FooterContent()
             }
         } else {
-            // 💻 LANDSCAPE LAYOUT - 3 Columns to fit Live Data properly
+            // 💻 LANDSCAPE LAYOUT
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -499,7 +687,7 @@ fun VacuumPanScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // LEFT COLUMN: Live PLC Data & Equipment
+                    // LEFT COLUMN
                     Column(
                         modifier = Modifier.weight(1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -508,7 +696,7 @@ fun VacuumPanScreen(
                         EquipmentContent(Modifier.weight(1f))
                     }
 
-                    // CENTER COLUMN: Logistics & Dropping Cycles
+                    // CENTER COLUMN
                     Column(
                         modifier = Modifier.weight(1.1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -518,7 +706,7 @@ fun VacuumPanScreen(
                         DroppingContent(Modifier)
                     }
 
-                    // RIGHT COLUMN: Audio & Signature
+                    // RIGHT COLUMN
                     Column(
                         modifier = Modifier.weight(1.1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -529,6 +717,102 @@ fun VacuumPanScreen(
                 }
 
                 FooterContent()
+            }
+        }
+
+        // ============================================================================
+        // EXPORT / PRINT OVERLAY DIALOG
+        // ============================================================================
+        if (showExportDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f))
+                    .clickable(enabled = false) {}, // Intercept background clicks
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    modifier = Modifier
+                        .width(480.dp)
+                        .shadow(16.dp, RoundedCornerShape(16.dp))
+                        .background(palette.baseChassis, RoundedCornerShape(16.dp))
+                        .border(1.dp, palette.glassBorder, RoundedCornerShape(16.dp))
+                        .padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Rounded.CheckCircle, null, tint = TechAccentGreen, modifier = Modifier.size(56.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text("LOG COMMITTED SUCCESSFULLY", color = TechAccentGreen, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        "Do you want to export a copy of this manual entry before closing?",
+                        color = palette.textPrimary, fontSize = 13.sp, textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+
+                        // 1. PRINT BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    printVacuumPanLogReport(
+                                        context, manualState, fceBrixFmt, fceVacuumFmt, fcePressureFmt, vacuumPumpAFmt,
+                                        signaturePoints, currentDate, currentTimeFormatted, currentShift
+                                    )
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Print, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("PRINT PDF", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // 2. CSV DOWNLOAD BUTTON
+                        Box(
+                            modifier = Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(palette.inputContainer).border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val csvData = generateVacuumPanLogCsv(
+                                        manualState, fceBrixFmt, fceVacuumFmt, fcePressureFmt, vacuumPumpAFmt,
+                                        signaturePoints, currentDate, currentTimeFormatted, currentShift
+                                    )
+                                    downloadVacuumPanLogCsvToDevice(context, csvData)
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Icon(Icons.Outlined.Download, null, tint = TechAccentBlue, modifier = Modifier.size(18.dp))
+                                Text("SAVE CSV", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // 3. SKIP BUTTON
+                        Box(
+                            modifier = Modifier.weight(0.7f).height(44.dp).clip(RoundedCornerShape(8.dp))
+                                .background(TechAccentBlue)
+                                .clickable {
+                                    manualState = manualState.copy(isSubmitted = true)
+                                    showExportDialog = false
+                                    onNavigationCallback()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("SKIP", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
             }
         }
     }

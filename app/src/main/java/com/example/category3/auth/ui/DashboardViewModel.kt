@@ -138,7 +138,7 @@ class DashboardViewModel : ViewModel() {
         .retryOnConnectionFailure(true)
         .build()
 
-    private val SSE_URL = "https://associate-supplier-alternatives-millennium.trycloudflare.com/stream"
+    private val SSE_URL = "https://dawn-officers-gas-growth.trycloudflare.com/stream"
 
     /** OPan inferred timers (no PLC timer tags available) */
     private val opanStartMillis = mutableMapOf<Int, Long>()

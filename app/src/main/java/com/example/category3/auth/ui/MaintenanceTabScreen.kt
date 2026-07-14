@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,7 +39,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AddAPhoto
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -61,12 +64,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -96,11 +102,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.category3.components.RadialAppBar
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -237,12 +245,17 @@ fun Modifier.greyFrostCard(isColumn: Boolean = false) = this
 
 // --- 4. MAIN ENTRY SCREEN ---
 @Composable
-fun MaintenanceTabScreen(viewModel: MaintenanceViewModel = viewModel()) {
+fun MaintenanceTabScreen(
+    onNavigateToScreen: (String) -> Unit, // Navigation callback
+    viewModel: MaintenanceViewModel = viewModel()
+) {
     val uiState by viewModel.uiState.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFFE2E8F0))) {
+        // 1. Background layer
         GreyFrostBackground()
 
+        // 2. Main Content layer
         when (val state = uiState) {
             is TicketUiState.Loading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -276,6 +289,16 @@ fun MaintenanceTabScreen(viewModel: MaintenanceViewModel = viewModel()) {
                 )
             }
         }
+
+        // 3. Radial App Bar floating gracefully on the left edge
+        RadialAppBar(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = 8.dp)
+                .zIndex(30f),
+            activeSection = "maintenance_tab", // Highlights the maintenance icon/section
+            onActionSelected = onNavigateToScreen
+        )
     }
 }
 
@@ -286,7 +309,10 @@ fun MaintenanceDashboardContent(
     onAssign: (String, String) -> Unit,
     onResolve: (String, List<List<Offset>>, Bitmap?) -> Unit
 ) {
-    val availableMechanics = remember { listOf("M. Reynolds (Mech)", "P. Taylor (Elec)", "J. Kowalski (Mech)", "S. Connor (Plumbing)") }
+    // 1. CHANGED: Now uses mutableStateListOf so we can add new technicians to it
+    val availableMechanics = remember {
+        mutableStateListOf("M. Reynolds (Mech)", "P. Taylor (Elec)", "J. Kowalski (Mech)", "S. Connor (Plumbing)")
+    }
 
     // UI State for Modals & Filters
     var ticketToSign by remember { mutableStateOf<String?>(null) }
@@ -320,11 +346,19 @@ fun MaintenanceDashboardContent(
         }
     }
 
+    // 2. CHANGED: Fixed the error by properly passing all parameters, including onAddMechanic
     ticketToAssign?.let { ticket ->
-        DispatchModal(mechanics = availableMechanics, onDismiss = { ticketToAssign = null }) { mechanic ->
-            onAssign(ticket.id, mechanic) // Calls API via ViewModel
-            ticketToAssign = null
-        }
+        DispatchModal(
+            mechanics = availableMechanics,
+            onDismiss = { ticketToAssign = null },
+            onAssign = { mechanic ->
+                onAssign(ticket.id, mechanic) // Calls API via ViewModel
+                ticketToAssign = null
+            },
+            onAddMechanic = { newMechanic ->
+                availableMechanics.add(newMechanic) // Adds the new technician to the list
+            }
+        )
     }
 
     ticketToSign?.let { id ->
@@ -334,7 +368,6 @@ fun MaintenanceDashboardContent(
         }
     }
 }
-
 
 // --- REMAINING UI COMPONENTS ---
 
@@ -364,7 +397,6 @@ fun PriorityFilterRow(selectedPriority: String, onPrioritySelected: (String) -> 
     }
 }
 
-// --- FIX APPLIED HERE: USING NAMED ARGUMENTS ---
 @Composable
 fun KpiDashboard(tickets: List<MaintenanceTicket>) {
     val totalWorks = tickets.size
@@ -554,22 +586,97 @@ fun DataText(label: String, value: String, time: String, icon: ImageVector? = nu
 }
 
 @Composable
-fun DispatchModal(mechanics: List<String>, onDismiss: () -> Unit, onAssign: (String) -> Unit) {
+fun DispatchModal(
+    mechanics: List<String>,
+    onDismiss: () -> Unit,
+    onAssign: (String) -> Unit,
+    onAddMechanic: (String) -> Unit // 🔴 NEW: Callback for adding a tech
+) {
+    // State for the new technician input field
+    var newMechanicName by remember { mutableStateOf("") }
+    val scrollState = rememberScrollState()
+
     Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().greyFrostCard(isColumn = false).background(Color.White.copy(0.95f)).padding(24.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.8f) // Prevents it from going off-screen if the list is too long
+                .greyFrostCard(isColumn = false)
+                .background(Color.White.copy(0.95f))
+                .padding(24.dp)
+        ) {
             Text("Select Technician", fontSize = 20.sp, color = GreyFrostColors.TextPrimary, fontWeight = FontWeight.Black)
             Text("Assign personnel to this work order.", fontSize = 14.sp, color = GreyFrostColors.TextSecondary)
+
             Spacer(Modifier.height(24.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+
+            // 🔴 CHANGED: Added verticalScroll so we can scroll through the list
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(scrollState),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 mechanics.forEach { mechanic ->
-                    Row(modifier = Modifier.fillMaxWidth().border(1.dp, GreyFrostColors.TextSecondary.copy(0.2f), RoundedCornerShape(8.dp)).clickable { onAssign(mechanic) }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Surface(shape = CircleShape, color = GreyFrostColors.AI.copy(0.1f)) { Icon(Icons.Rounded.Engineering, null, tint = GreyFrostColors.AI, modifier = Modifier.padding(8.dp).size(20.dp)) }
-                        Spacer(Modifier.width(16.dp)); Text(mechanic, fontSize = 15.sp, color = GreyFrostColors.TextPrimary, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, GreyFrostColors.TextSecondary.copy(0.2f), RoundedCornerShape(8.dp))
+                            .clickable { onAssign(mechanic) }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(shape = CircleShape, color = GreyFrostColors.AI.copy(0.1f)) {
+                            Icon(Icons.Rounded.Engineering, null, tint = GreyFrostColors.AI, modifier = Modifier.padding(8.dp).size(20.dp))
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Text(mechanic, fontSize = 15.sp, color = GreyFrostColors.TextPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // 🔴 NEW: Add Technician Section
+                Text("Add New Technician", fontSize = 13.sp, color = GreyFrostColors.TextPrimary, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newMechanicName,
+                        onValueChange = { newMechanicName = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("e.g. J. Doe (Mech)", fontSize = 12.sp, color = GreyFrostColors.TextSecondary) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GreyFrostColors.Active,
+                            unfocusedBorderColor = GreyFrostColors.TextSecondary.copy(alpha = 0.3f),
+                        )
+                    )
+
+                    Button(
+                        onClick = {
+                            if (newMechanicName.isNotBlank()) {
+                                onAddMechanic(newMechanicName.trim())
+                                newMechanicName = "" // clear input after adding
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = GreyFrostColors.Active),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(50.dp)
+                    ) {
+                        Icon(Icons.Rounded.Add, contentDescription = "Add Tech", tint = Color.White)
                     }
                 }
             }
-            Spacer(Modifier.height(24.dp))
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("CANCEL", color = GreyFrostColors.TextSecondary, fontWeight = FontWeight.Black) }
+
+            Spacer(Modifier.height(16.dp))
+
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                Text("CANCEL", color = GreyFrostColors.TextSecondary, fontWeight = FontWeight.Black)
+            }
         }
     }
 }

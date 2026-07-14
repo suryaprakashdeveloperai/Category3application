@@ -28,6 +28,12 @@ object ThresholdManager {
         "POWER_FACTOR_MIN" to 0.85f,
         "TOTAL_ENERGY_MAX" to 500.0f,
 
+        // --- NEW ENERGY / UTILITIES ---
+        "CANE_CARRIER_AMPS_MAX" to 25.0f,
+        "COOLING_PUMP_AMPS_MAX" to 45.0f,
+        "POWDER_MAKER_AMPS_MAX" to 20.0f,
+        "CONDENSATE_TEMP_MAX" to 40.0f,
+
         // PROCESS / PRODUCTION
         "DEFECATOR_PH_MIN" to 6.5f,
         "DEFECATOR_PH_MAX" to 8.0f,
@@ -38,7 +44,20 @@ object ThresholdManager {
         "RAW_JUICE_TEMP_MAX" to 40.0f,
         "FCE_BRIX_MIN" to 65.0f,
         "FCE_BRIX_MAX" to 75.0f,
-        "EVAP_BODY5_BRIX_MIN" to 18.0f
+        "EVAP_BODY5_BRIX_MIN" to 18.0f,
+
+        // --- NEW PROCESS / PRODUCTION ---
+        "RAW_JUICE_TANK_LEVEL_MAX" to 85.0f,
+        "RAW_JUICE_TANK_LEVEL_MIN" to 15.0f,
+        "CLEAR_JUICE_TANK_LEVEL_MAX" to 85.0f,
+        "SYRUP_TANK_LEVEL_MAX" to 85.0f,
+        "CANE_STOCK_MIN" to 20.0f,
+        "EVAP_LEVEL_MIN" to 35.0f,
+        "EVAP_LEVEL_MAX" to 65.0f,
+        "EVAP_BODY1_PRESSURE_MAX" to 2.5f,
+        "JUICE_HEATER_TEMP_MIN" to 65.0f,
+        "JUICE_HEATER_TEMP_MAX" to 115.0f,
+        "POWDER_MAKER_VACUUM_MIN" to 550.0f
     )
 
     private val _thresholds = MutableStateFlow(defaultThresholds)

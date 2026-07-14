@@ -241,13 +241,16 @@ fun AppNavigation() {
 
         // ─── MILL DASHBOARD (Mock/Carousel UI) ───────────────────────────────
         composable(AppDestinations.MILL_DASHBOARD) {
-            MillDiagnosticsHubScreen(
+
+
+
+            // 👇 Change this to call the Screen Container instead of the Hub Screen
+            MillDiagnosticsScreenContainer(
                 onNavigateToScreen = { targetRoute ->
                     navController.navigate(targetRoute)
                 }
             )
         }
-
         // ─── MILL DEDICATED (Live SSE UI) ← NEW ──────────────────────────────
         composable(AppDestinations.MILL_DEDICATED) {
             MillDedicatedPageScreen(
@@ -305,7 +308,19 @@ fun AppNavigation() {
 
         // ==================== LEGACY MANUAL / FORM SCREENS ====================
         composable(AppDestinations.MAINTENANCE_TAB) {
-            MaintenanceTabScreen()
+            MaintenanceTabScreen(
+                onNavigateToScreen = { route ->
+                    // Assuming your NavController is named 'navController'
+                    navController.navigate(route) {
+                        // Optional: Standard tab navigation behavior to avoid stacking backstack
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
         }
 
         composable(AppDestinations.MILLMANUALENTRY) {
@@ -357,14 +372,7 @@ fun AppNavigation() {
             )
         }
         composable(AppDestinations.FLOTATION_CLARIFIER_DEDICATED) {
-            DefecatorDedicatedPageScreen(
-                userName = "Operator",
-                userRole = "Shift Engineer",
-                onBack = { navController.popBackStack() },
-                onNavigateToScreen = { targetRoute ->
-                    navController.navigate(targetRoute) { launchSingleTop = true }
-                }
-            )
+            FlotationClarifierDedicatedPageScreen()
         }
         composable(AppDestinations.CONCENTRATION_DEDICATED) {
             ConcentrationDedicatedPageScreen(

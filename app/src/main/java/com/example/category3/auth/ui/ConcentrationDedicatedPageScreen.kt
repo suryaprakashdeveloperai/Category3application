@@ -1,5 +1,6 @@
 package com.example.category3.auth.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,19 +28,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.category3.R
 
-// ─── Theme Colors matching the Concentration Grid ───────────────────────────
+// ─── Theme Colors ─────────────────────────────────────────────────────────
 private val LocalAmber = Color(0xFFF59E0B)
 private val DeepBlue = Color(0xFF1E3A8A)
 private val LightBg = Color(0xFFF8FAFC)
 private val CardBg = Color(0xFFFFFFFF)
-
-// Additional layout theme fallbacks
+// ─── UI Composables ───────────────────────────────────────────────────────
 
 @Composable
 fun ConcentrationDedicatedPageScreen(
@@ -48,11 +51,9 @@ fun ConcentrationDedicatedPageScreen(
     onBack: () -> Unit = {},
     onNavigateToScreen: (String) -> Unit = {}
 ) {
-    // 1. Hooking into the dedicated factory instance matching live telemetry specs
     val vm: ConcentrationDedicatedViewModel = viewModel(
         factory = ConcentrationDedicatedViewModel.provideFactory(userName, userRole)
     )
-    // 2. Continuous observation of the state flow context
     val live by vm.state.collectAsStateWithLifecycle()
 
     ConcentrationDedicatedPageContent(
@@ -78,13 +79,12 @@ fun ConcentrationDedicatedPageContent(
                 .padding(start = 24.dp, end = 24.dp, bottom = 24.dp)
                 .verticalScroll(scroll)
         ) {
-            // Top Workspace Header rendering stream attributes
             ConcentrationHeader(
                 batchId = state.batchId,
                 statusText = state.sectionStatus.name,
                 statusColor = if (state.sectionStatus == EquipmentStatus.FAULT) StatusRed else StatusGreen,
                 shiftStart = state.startTime,
-                onBack = onBack // Passed onBack to header
+                onBack = onBack
             )
 
             if (live.connectionStatus == "RECONNECTING" || live.connectionStatus == "DISCONNECTED") {
@@ -96,16 +96,16 @@ fun ConcentrationDedicatedPageContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // Left & Middle Column (Dynamic System Units Data & Quick Metrics)
                 Column(
                     modifier = Modifier.weight(2.2f),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
+                    // ─── MOVED TO TOP AND STYLED AS A UNIFIED KPI BOX ───
+                    KpiDashboardSection(live = live)
+
                     UnitProcessFlowSection(state.openPans, state.powderMakers)
-                    QuickMetricsGridSection(live = live)
                 }
 
-                // Right Side Rail (Analytics & Summary Panels)
                 Column(
                     modifier = Modifier.weight(0.8f),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -118,10 +118,6 @@ fun ConcentrationDedicatedPageContent(
         }
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Headings & Layout Structural Blocks (Bound to Live State)
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun ConcentrationHeader(
@@ -139,7 +135,6 @@ fun ConcentrationHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Back Button Points to Workflow Dashboard Screen
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.Default.ArrowBack,
@@ -171,6 +166,50 @@ fun ConcentrationHeader(
         }
     }
 }
+// ─── NEW UNIFIED KPI DASHBOARD SECTION ─────────────────────────────────────
+@Composable
+fun KpiDashboardSection(live: ConcentrationDedicatedLiveState) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CardBg, RoundedCornerShape(16.dp))
+            .border(1.dp, BorderGray, RoundedCornerShape(16.dp))
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("📈 Key Performance Indicators", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark)
+
+        val telemetryItems = listOf(
+            MetricItemData("OEE / Efficiency", "${live.efficiency}%", "Target: >90%", StatusGreen),
+            MetricItemData("Total Output", "%,.0f kg".format(live.totalJaggeryKg), "Accumulated Weight", AccentPurple),
+            MetricItemData("Steam Mass Flow", "%,.0f kg/hr".format(live.steamFlow), "Live Distribution", DeepBlue),
+            MetricItemData("Pans Available", "${live.openPanAvailableCount} Units", "In System Stack", StatusGreen),
+            MetricItemData("Powder Buffers", "${live.powderMakerAvailableCount} Units", "Available Buffer", LocalAmber)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            telemetryItems.forEach { item ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(LightBg, RoundedCornerShape(12.dp))
+                        .padding(16.dp)
+                ) {
+                    Column {
+                        Text(item.label, fontSize = 12.sp, color = TextGray, maxLines = 1)
+                        Spacer(Modifier.height(8.dp))
+                        Text(item.value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = item.accentColor, maxLines = 1)
+                        Spacer(Modifier.height(4.dp))
+                        Text(item.metaDesc, fontSize = 11.sp, color = TextGray, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun UnitProcessFlowSection(
@@ -180,7 +219,6 @@ fun UnitProcessFlowSection(
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text("🍯 Active Processing Units", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark)
 
-        // Renders all 4 elements provided dynamically from incoming telemetry stream updates
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -203,7 +241,16 @@ fun UnitProcessFlowSection(
                         Spacer(Modifier.height(8.dp))
                         Text(op.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
 
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(8.dp))
+
+                        Image(
+                            painter = painterResource(id = R.drawable.openpan_image),
+                            contentDescription = "${op.name} Image",
+                            modifier = Modifier.fillMaxWidth().height(80.dp),
+                            contentScale = ContentScale.Fit
+                        )
+
+                        Spacer(Modifier.height(12.dp))
 
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Box(modifier = Modifier.size(6.dp).background(cardColor, CircleShape))
@@ -222,7 +269,6 @@ fun UnitProcessFlowSection(
             }
         }
 
-        // Renders powder processing metrics dynamically across elements
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             powderMakers.chunked(2).forEach { subList ->
                 Row(
@@ -247,6 +293,16 @@ fun UnitProcessFlowSection(
                                 }
                                 Spacer(Modifier.height(4.dp))
                                 Text("Diagnose: ${pm.statusText}", fontSize = 11.sp, color = TextGray)
+
+                                Spacer(Modifier.height(12.dp))
+
+                                Image(
+                                    painter = painterResource(id = R.drawable.powdermaker),
+                                    contentDescription = "${pm.name} Image",
+                                    modifier = Modifier.fillMaxWidth().height(80.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+
                                 Spacer(Modifier.height(12.dp))
                                 Divider(color = BorderGray)
                                 Spacer(Modifier.height(12.dp))
@@ -275,44 +331,7 @@ fun UnitProcessFlowSection(
     }
 }
 
-@Composable
-fun QuickMetricsGridSection(live: ConcentrationDedicatedLiveState) {
-    val telemetryItems = listOf(
-        MetricItemData("Steam Pressure", "%.2f Bar".format(live.steamPressure), "Baseline Nominal", StatusGreen),
-        MetricItemData("Steam Mass Flow", "%,.0f kg/hr".format(live.steamFlow), "Live Distribution", DeepBlue),
-        MetricItemData("Total Output", "%,.0f kg".format(live.totalJaggeryKg), "Accumulated Weight", AccentPurple),
-        MetricItemData("Pans Available", "${live.openPanAvailableCount} Units", "In System Stack", StatusGreen),
-        MetricItemData("Powder Buffers", "${live.powderMakerAvailableCount} Units", "Available Buffer", LocalAmber)
-    )
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        telemetryItems.forEach { item ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .background(CardBg, RoundedCornerShape(12.dp))
-                    .padding(12.dp)
-            ) {
-                Column {
-                    Text(item.label, fontSize = 11.sp, color = TextGray, maxLines = 1)
-                    Spacer(Modifier.height(4.dp))
-                    Text(item.value, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = item.accentColor, maxLines = 1)
-                    Spacer(Modifier.height(14.dp))
-                    Text(item.metaDesc, fontSize = 10.sp, color = TextGray, maxLines = 1)
-                }
-            }
-        }
-    }
-}
-
 data class MetricItemData(val label: String, val value: String, val metaDesc: String, val accentColor: Color)
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Side Panel Right-Rail Components
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun IdentitySummaryCard(state: ConcentrationDedicatedDashboardState) {

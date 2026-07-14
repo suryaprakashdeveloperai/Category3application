@@ -40,6 +40,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,13 +68,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.data.MillTelemetryState
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import kotlin.random.Random
 
 private data class MorphicPalette(
     val baseChassis: Color, val glassFill: Color, val glassBorder: Color,
@@ -106,10 +107,13 @@ private val TechAlarmRed = Color(0xFFEF4444)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MillManualEntryScreen(
+    viewModel: MillDedicatedViewModel = viewModel(factory = MillDedicatedViewModel.provideFactory()),
     onRaiseTicket: (String) -> Unit,
     onNavigationCallback: () -> Unit
 ) {
     val context = LocalContext.current
+    val liveState by viewModel.state.collectAsState()
+
     val currentDate = remember { LocalDate.now().format(DateTimeFormatter.ISO_DATE) }
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
     var state by remember { mutableStateOf(MillTelemetryState()) }
@@ -124,21 +128,36 @@ fun MillManualEntryScreen(
     var isDarkThemeOverride by remember { mutableStateOf(false) }
     val palette = getDynamicMorphicPalette(isDark = isDarkThemeOverride)
 
+    // Clock Loop
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = LocalTime.now()
-            if (!state.isSubmitted) {
-                state = state.copy(
-                    juiceFlow = String.format("%.1f", 302.5 + Random.nextDouble(-4.0, 4.0)),
-                    caneCarrierRpm = String.format("%.1f", 44.2 + Random.nextDouble(-1.0, 1.0)),
-                    rake1Rpm = String.format("%.1f", 22.1 + Random.nextDouble(-0.3, 0.3)),
-                    rake2Rpm = String.format("%.1f", 21.8 + Random.nextDouble(-0.3, 0.3)),
-                    m1Rpm = (1418 + Random.nextInt(-8, 8)).toString(),
-                    m1Amps = (378 + Random.nextInt(-4, 6)).toString(),
-                    m1Pressure = String.format("%.1f", 4.1 + Random.nextDouble(-0.1, 0.1))
-                )
-            }
             delay(1000)
+        }
+    }
+
+    // Sync Live PLC Data from ViewModel when not manually overridden/submitted
+    LaunchedEffect(liveState) {
+        if (!state.isSubmitted) {
+            val m1 = liveState.dashboard.motors.getOrNull(0)
+            val m2 = liveState.dashboard.motors.getOrNull(1)
+            val m3 = liveState.dashboard.motors.getOrNull(2)
+
+            // Safely extract numeric strings from formatted tags (e.g., "25.0 A" -> "25.0")
+            fun extractAmps(m: MotorData?) = m?.healthValue?.replace(Regex("[^0-9.]"), "") ?: ""
+            // Extract RPM from status string (e.g., "Stable · 745 RPM" -> "745")
+            fun extractRpm(m: MotorData?) = Regex("(\\d+)").find(m?.statusText ?: "")?.value ?: ""
+
+            state = state.copy(
+                juiceFlow = String.format("%.1f", liveState.rawJuice.volumeFlowM3hr),
+                m1Amps = extractAmps(m1).ifEmpty { state.m1Amps },
+                m1Rpm = extractRpm(m1).ifEmpty { state.m1Rpm },
+                m2Amps = extractAmps(m2).ifEmpty { state.m2Amps },
+                m2Rpm = extractRpm(m2).ifEmpty { state.m2Rpm },
+                m3Amps = extractAmps(m3).ifEmpty { state.m3Amps },
+                m3Rpm = extractRpm(m3).ifEmpty { state.m3Rpm }
+                // Note: Rakes and Pressures are retained as manual inputs since they are not provided by VM
+            )
         }
     }
 
@@ -183,7 +202,11 @@ fun MillManualEntryScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("MILL HARMONIZED CONTROL MATRIX [AUTOMATED PLC LINK]", color = palette.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                    Text(
+                        text = "MILL HARMONIZED CONTROL MATRIX [STATUS: ${liveState.connectionStatus}]",
+                        color = if (liveState.connectionStatus == "CONNECTED") TechAccentGreen else palette.textPrimary,
+                        fontSize = 15.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono
+                    )
                     Row(
                         modifier = Modifier.padding(top = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -217,7 +240,7 @@ fun MillManualEntryScreen(
             }
 
             // ============================================================================
-            // SMART BALANCED GRID ARCHITECTURE (🚀 Weight enabled, Scroll removed)
+            // SMART BALANCED GRID ARCHITECTURE
             // ============================================================================
             Row(
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -252,12 +275,12 @@ fun MillManualEntryScreen(
                             )
                             HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
                             MillConduitParameterRow(
-                                indexLabel = "MILL MOTOR DRIVE 02 [Manual Storage]", rpm = state.m2Rpm, amps = state.m2Amps, press = state.m2Pressure, palette = palette,
+                                indexLabel = "MILL MOTOR DRIVE 02 [PLC Live]", rpm = state.m2Rpm, amps = state.m2Amps, press = state.m2Pressure, palette = palette,
                                 onRpm = { state = state.copy(m2Rpm = it, isSubmitted = false) }, onAmps = { state = state.copy(m2Amps = it, isSubmitted = false) }, onPress = { state = state.copy(m2Pressure = it, isSubmitted = false) }
                             )
                             HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
                             MillConduitParameterRow(
-                                indexLabel = "MILL MOTOR DRIVE 03 [Manual Storage]", rpm = state.m3Rpm, amps = state.m3Amps, press = state.m3Pressure, palette = palette,
+                                indexLabel = "MILL MOTOR DRIVE 03 [PLC Live]", rpm = state.m3Rpm, amps = state.m3Amps, press = state.m3Pressure, palette = palette,
                                 onRpm = { state = state.copy(m3Rpm = it, isSubmitted = false) }, onAmps = { state = state.copy(m3Amps = it, isSubmitted = false) }, onPress = { state = state.copy(m3Pressure = it, isSubmitted = false) }
                             )
                         }
@@ -269,8 +292,10 @@ fun MillManualEntryScreen(
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("JUICE PUMPS CONTROLS:", color = palette.textMuted, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
                                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    TechDisabledChip("PUMP 01 ACTIVE", true)
-                                    TechDisabledChip("PUMP 02 LOCK", false)
+                                    val isRunning = liveState.rawJuice.pumpStatus.name == "RUNNING"
+                                    val isFault = liveState.rjPumpFault
+                                    TechDisabledChip("PUMP 01 ACTIVE", isRunning)
+                                    TechDisabledChip(if (isFault) "PUMP FAULT" else "PUMP OK", !isFault)
                                 }
                             }
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
@@ -296,12 +321,12 @@ fun MillManualEntryScreen(
                     modifier = Modifier.weight(1.1f),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // 1. Operator annotations card (Height optimized for balanced look)
+                    // 1. Operator annotations card
                     MillFormSectionCard(title = "OPERATOR RECORDING LOG ANNOTATIONS", icon = Icons.Rounded.Notes, palette = palette, isDark = isDarkThemeOverride) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(130.dp) // 📉 Shifted from 160.dp to match height ratio
+                                .height(130.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(palette.inputContainer)
                                 .border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(8.dp))

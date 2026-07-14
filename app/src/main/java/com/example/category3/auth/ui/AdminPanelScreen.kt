@@ -1,6 +1,5 @@
 package com.example.category3.auth.ui
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Remove
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -41,10 +41,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,7 +58,7 @@ import kotlin.math.roundToInt
 private val NothingBlack = Color(0xFF0F0F0F)
 private val NothingWhite = Color(0xFFF9F9F9)
 private val NothingRed = Color(0xFFE50914)
-private val FrostGray = Color(0xFFE8E8EC).copy(alpha = 0.6f)
+private val FrostGray = Color(0xFFE8E8EC).copy(alpha = 0.4f)
 private val TextMuted = Color(0xFF88888D)
 
 data class ThresholdParam(
@@ -74,75 +72,58 @@ data class ThresholdParam(
 )
 
 class AdminViewModel : ViewModel() {
-    // Automatically map the current dynamic thresholds into the UI structure
-                val thresholdsMap = ThresholdManager.thresholds
-                    .map { liveVals ->
-                mapOf(
-                    "BOILER" to listOf(
-                        ThresholdParam("STEAM_PRESSURE_MIN", "Steam Pressure Min", liveVals["STEAM_PRESSURE_MIN"] ?: 10f, "Bar", 0.5f, 0f, 20f),
-                        ThresholdParam("STEAM_PRESSURE_MAX", "Steam Pressure Max", liveVals["STEAM_PRESSURE_MAX"] ?: 14f, "Bar", 0.5f, 0f, 20f),
-                        ThresholdParam("STEAM_FLOW_MAX", "Steam Flow Max", liveVals["STEAM_FLOW_MAX"] ?: 6000f, "kg/hr", 100f, 1000f, 10000f),
-                        ThresholdParam("CONDENSER_TEMP_MAX", "Condenser Temp Max", liveVals["CONDENSER_TEMP_MAX"] ?: 45f, "°C", 1.0f, 20f, 100f)
-                    ),
-
-                    "MILLING" to listOf(
-                        ThresholdParam("CANE_CUTTER_AMPS_MAX", "Cane Cutter Amps", liveVals["CANE_CUTTER_AMPS_MAX"] ?: 180f, "A", 5.0f, 50f, 300f),
-                        ThresholdParam("FIBERIZOR_AMPS_MAX", "Fiberizor Amps", liveVals["FIBERIZOR_AMPS_MAX"] ?: 220f, "A", 5.0f, 50f, 350f),
-                        ThresholdParam("MILL_MOTOR_AMPS_MAX", "Mill Motor Amps", liveVals["MILL_MOTOR_AMPS_MAX"] ?: 20f, "A", 1.0f, 5f, 50f),
-
-                        // NEW (Production)
-                        ThresholdParam("MILLING_TPH_MIN", "Milling Throughput Min", liveVals["MILLING_TPH_MIN"] ?: 8f, "T/hr", 0.5f, 0f, 50f)
-                    ),
-
-                    "EVAPORATION" to listOf(
-                        ThresholdParam("EVAP_BODY1_TEMP_MAX", "Evap Body 1 Temp", liveVals["EVAP_BODY1_TEMP_MAX"] ?: 115f, "°C", 1.0f, 80f, 150f),
-                        ThresholdParam("EVAP_VACUUM_MIN", "Evap Vacuum Min", liveVals["EVAP_VACUUM_MIN"] ?: 700f, "mmHg", 10.0f, 400f, 800f),
-
-                        // NEW (Production)
-                        ThresholdParam("EVAP_BODY5_BRIX_MIN", "Evap Body 5 Brix Min", liveVals["EVAP_BODY5_BRIX_MIN"] ?: 18f, "°Bx", 0.5f, 0f, 40f)
-                    ),
-
-                    "CONCENTRATION" to listOf(
-                        ThresholdParam("FCE_VACUUM_MIN", "FCE Vacuum Min", liveVals["FCE_VACUUM_MIN"] ?: 600f, "mmHg", 10.0f, 300f, 750f),
-                        ThresholdParam("OPAN_AMPS_MAX", "Open Pan Amps", liveVals["OPAN_AMPS_MAX"] ?: 10f, "A", 0.5f, 1f, 30f),
-
-                        // NEW (Production)
-                        ThresholdParam("FCE_BRIX_MIN", "FCE Brix Min", liveVals["FCE_BRIX_MIN"] ?: 65f, "°Bx", 0.5f, 40f, 90f),
-                        ThresholdParam("FCE_BRIX_MAX", "FCE Brix Max", liveVals["FCE_BRIX_MAX"] ?: 75f, "°Bx", 0.5f, 40f, 95f),
-                        ThresholdParam("MIN_PANS_RUNNING", "Min Open Pans Running", liveVals["MIN_PANS_RUNNING"] ?: 2f, "Nos", 1f, 0f, 4f),
-                        ThresholdParam("OPAN_TEMP_MAX", "Open Pan Temp Max", liveVals["OPAN_TEMP_MAX"] ?: 110f, "°C", 1f, 60f, 140f)
-                    ),
-
-                    "PUMPS" to listOf(
-                        ThresholdParam("FEED_WATER_PUMP_MAX", "Feed Water Pump", liveVals["FEED_WATER_PUMP_MAX"] ?: 50f, "A", 1.0f, 10f, 100f),
-                        ThresholdParam("CONDENSER_PUMP_MAX", "Condenser Pump", liveVals["CONDENSER_PUMP_MAX"] ?: 65f, "A", 1.0f, 10f, 100f),
-                        ThresholdParam("VACUUM_PUMP_MAX", "Vacuum Pump", liveVals["VACUUM_PUMP_MAX"] ?: 35f, "A", 1.0f, 10f, 80f)
-                    ),
-
-                    "POWER" to listOf(
-                        ThresholdParam("LV_VOLTAGE_MIN", "LV Voltage Min", liveVals["LV_VOLTAGE_MIN"] ?: 400f, "V", 5.0f, 300f, 500f),
-                        ThresholdParam("LV_VOLTAGE_MAX", "LV Voltage Max", liveVals["LV_VOLTAGE_MAX"] ?: 430f, "V", 5.0f, 300f, 500f),
-                        ThresholdParam("HV_VOLTAGE_MIN", "HV Voltage Min", liveVals["HV_VOLTAGE_MIN"] ?: 6400f, "V", 100.0f, 5000f, 8000f),
-                        ThresholdParam("POWER_FACTOR_MIN", "Power Factor Min", liveVals["POWER_FACTOR_MIN"] ?: 0.85f, "pf", 0.01f, 0.5f, 1.0f),
-                        ThresholdParam("TOTAL_ENERGY_MAX", "Total Energy Max", liveVals["TOTAL_ENERGY_MAX"] ?: 500f, "kW", 10f, 100f, 1000f)
-                    ),
-
-                    "PROCESS" to listOf(
-                        ThresholdParam("DEFECATOR_PH_MIN", "Defecator pH Min", liveVals["DEFECATOR_PH_MIN"] ?: 6.5f, "pH", 0.1f, 4f, 7f),
-                        ThresholdParam("DEFECATOR_PH_MAX", "Defecator pH Max", liveVals["DEFECATOR_PH_MAX"] ?: 8.0f, "pH", 0.1f, 7f, 10f),
-                        ThresholdParam("YIELD_EFFICIENCY_MIN", "Yield Efficiency Min", liveVals["YIELD_EFFICIENCY_MIN"] ?: 85f, "%", 0.5f, 50f, 100f),
-
-                        // NEW (Production)
-                        ThresholdParam("RAW_JUICE_TEMP_MAX", "Raw Juice Temp Max", liveVals["RAW_JUICE_TEMP_MAX"] ?: 40f, "°C", 1f, 20f, 80f)
-                    )
+    val thresholdsMap = ThresholdManager.thresholds
+        .map { liveVals ->
+            mapOf(
+                "BOILER" to listOf(
+                    ThresholdParam("STEAM_PRESSURE_MIN", "Steam Pressure Min", liveVals["STEAM_PRESSURE_MIN"] ?: 10f, "Bar", 0.5f, 0f, 20f),
+                    ThresholdParam("STEAM_PRESSURE_MAX", "Steam Pressure Max", liveVals["STEAM_PRESSURE_MAX"] ?: 14f, "Bar", 0.5f, 0f, 20f),
+                    ThresholdParam("STEAM_FLOW_MAX", "Steam Flow Max", liveVals["STEAM_FLOW_MAX"] ?: 6000f, "kg/hr", 100f, 1000f, 10000f),
+                    ThresholdParam("CONDENSER_TEMP_MAX", "Condenser Temp Max", liveVals["CONDENSER_TEMP_MAX"] ?: 45f, "°C", 1f, 20f, 100f)
+                ),
+                "MILLING" to listOf(
+                    ThresholdParam("CANE_CUTTER_AMPS_MAX", "Cane Cutter", liveVals["CANE_CUTTER_AMPS_MAX"] ?: 180f, "A", 5f, 50f, 300f),
+                    ThresholdParam("FIBERIZOR_AMPS_MAX", "Fiberizor", liveVals["FIBERIZOR_AMPS_MAX"] ?: 220f, "A", 5f, 50f, 350f),
+                    ThresholdParam("MILL_MOTOR_AMPS_MAX", "Mill Motor", liveVals["MILL_MOTOR_AMPS_MAX"] ?: 20f, "A", 1f, 5f, 50f),
+                    ThresholdParam("MILLING_TPH_MIN", "Throughput Min", liveVals["MILLING_TPH_MIN"] ?: 8f, "T/hr", 0.5f, 0f, 50f)
+                ),
+                "EVAPORATION" to listOf(
+                    ThresholdParam("EVAP_BODY1_TEMP_MAX", "Body 1 Temp", liveVals["EVAP_BODY1_TEMP_MAX"] ?: 115f, "°C", 1f, 80f, 150f),
+                    ThresholdParam("EVAP_VACUUM_MIN", "Vacuum Min", liveVals["EVAP_VACUUM_MIN"] ?: 700f, "mmHg", 10f, 400f, 800f),
+                    ThresholdParam("EVAP_BODY5_BRIX_MIN", "Body 5 Brix", liveVals["EVAP_BODY5_BRIX_MIN"] ?: 18f, "°Bx", 0.5f, 0f, 40f)
+                ),
+                "CONCENTRATION" to listOf(
+                    ThresholdParam("FCE_VACUUM_MIN", "FCE Vacuum", liveVals["FCE_VACUUM_MIN"] ?: 600f, "mmHg", 10f, 300f, 750f),
+                    ThresholdParam("FCE_BRIX_MIN", "FCE Brix Min", liveVals["FCE_BRIX_MIN"] ?: 65f, "°Bx", 0.5f, 40f, 90f),
+                    ThresholdParam("FCE_BRIX_MAX", "FCE Brix Max", liveVals["FCE_BRIX_MAX"] ?: 75f, "°Bx", 0.5f, 40f, 95f),
+                    ThresholdParam("MIN_PANS_RUNNING", "Min Pans", liveVals["MIN_PANS_RUNNING"] ?: 2f, "Nos", 1f, 0f, 4f),
+                    ThresholdParam("OPAN_TEMP_MAX", "Pan Temp Max", liveVals["OPAN_TEMP_MAX"] ?: 110f, "°C", 1f, 60f, 140f)
+                ),
+                "PUMPS" to listOf(
+                    ThresholdParam("FEED_WATER_PUMP_MAX", "Feed Water", liveVals["FEED_WATER_PUMP_MAX"] ?: 50f, "A", 1f, 10f, 100f),
+                    ThresholdParam("CONDENSER_PUMP_MAX", "Condenser", liveVals["CONDENSER_PUMP_MAX"] ?: 65f, "A", 1f, 10f, 100f),
+                    ThresholdParam("VACUUM_PUMP_MAX", "Vacuum", liveVals["VACUUM_PUMP_MAX"] ?: 35f, "A", 1f, 10f, 80f)
+                ),
+                "POWER" to listOf(
+                    ThresholdParam("LV_VOLTAGE_MIN", "LV Min", liveVals["LV_VOLTAGE_MIN"] ?: 400f, "V", 5f, 300f, 500f),
+                    ThresholdParam("LV_VOLTAGE_MAX", "LV Max", liveVals["LV_VOLTAGE_MAX"] ?: 430f, "V", 5f, 300f, 500f),
+                    ThresholdParam("HV_VOLTAGE_MIN", "HV Min", liveVals["HV_VOLTAGE_MIN"] ?: 6400f, "V", 100f, 5000f, 8000f),
+                    ThresholdParam("POWER_FACTOR_MIN", "PF Min", liveVals["POWER_FACTOR_MIN"] ?: 0.85f, "pf", 0.01f, 0.5f, 1f)
+                ),
+                "PROCESS" to listOf(
+                    ThresholdParam("DEFECATOR_PH_MIN", "pH Min", liveVals["DEFECATOR_PH_MIN"] ?: 6.5f, "pH", 0.1f, 4f, 7f),
+                    ThresholdParam("DEFECATOR_PH_MAX", "pH Max", liveVals["DEFECATOR_PH_MAX"] ?: 8f, "pH", 0.1f, 7f, 10f),
+                    ThresholdParam("YIELD_EFFICIENCY_MIN", "Yield %", liveVals["YIELD_EFFICIENCY_MIN"] ?: 85f, "%", 0.5f, 50f, 100f),
+                    ThresholdParam("RAW_JUICE_TEMP_MAX", "Juice Temp", liveVals["RAW_JUICE_TEMP_MAX"] ?: 40f, "°C", 1f, 20f, 80f)
                 )
-            }
-                .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
-
-            fun updateThreshold(key: String, newValue: Float) {
-                ThresholdManager.updateThreshold(key, newValue)
-            }
+            )
         }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+
+    fun updateThreshold(key: String, newValue: Float) {
+        ThresholdManager.updateThreshold(key, newValue)
+    }
+}
 
 @Composable
 fun AdminPanelScreen(
@@ -158,17 +139,14 @@ fun AdminPanelScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.linearGradient(
-                    listOf(Color.White, Color(0xFFF3F3F5))
-                )
-            )
+            .background(Color(0xFFF5F5F7))
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Compact Header
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -176,93 +154,96 @@ fun AdminPanelScreen(
                     "Back",
                     tint = NothingBlack,
                     modifier = Modifier
-                        .size(28.dp)
+                        .size(24.dp)
                         .clip(CircleShape)
                         .clickable { onNavigateBack() }
                 )
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
                         "SYSTEM_ADMIN",
                         color = NothingRed,
-                        fontSize = 10.sp,
+                        fontSize = 8.sp,
                         fontWeight = FontWeight.Black,
-                        letterSpacing = 2.sp
+                        letterSpacing = 1.5.sp
                     )
                     Text(
-                        "Thresholds Configuration",
+                        "Thresholds",
                         color = NothingBlack,
-                        fontSize = 24.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = (-0.5).sp
+                        letterSpacing = (-0.3).sp
                     )
                 }
             }
 
+            // Compact Category Chips
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(bottom = 20.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(bottom = 12.dp)
             ) {
                 items(categories) { category ->
                     val isSelected = category == selectedCategory
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(if (isSelected) NothingBlack else Color.Transparent)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(if (isSelected) NothingBlack else Color.White)
                             .border(
-                                1.dp,
+                                0.5.dp,
                                 if (isSelected) NothingBlack else BorderGray,
-                                RoundedCornerShape(24.dp)
+                                RoundedCornerShape(16.dp)
                             )
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { selectedCategory = category }
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
                     ) {
                         Text(
                             category,
                             color = if (isSelected) NothingWhite else TextMuted,
-                            fontSize = 12.sp,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
+                            letterSpacing = 0.5.sp
                         )
                     }
                 }
             }
 
+            // Compact List
             val currentItems = thresholdsMap[selectedCategory] ?: emptyList()
             LazyColumn(
-                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.weight(1f)
             ) {
                 items(currentItems, key = { it.key }) { param ->
-                    ThresholdControlCard(param = param) { newValue ->
+                    CompactThresholdCard(param = param) { newValue ->
                         viewModel.updateThreshold(param.key, newValue)
                     }
                 }
             }
         }
 
+        // Compact Bottom Button
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.White, Color.White),
-                        endY = 150f
+                        listOf(Color.Transparent, Color(0xFFF5F5F7), Color(0xFFF5F5F7)),
+                        endY = 80f
                     )
                 )
-                .padding(24.dp)
+                .padding(16.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(NothingBlack)
                     .clickable { onNavigateBack() },
                 horizontalArrangement = Arrangement.Center,
@@ -270,48 +251,40 @@ fun AdminPanelScreen(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
+                        .size(6.dp)
                         .background(NothingRed, CircleShape)
                 )
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    "DEPLOY CONFIGURATION",
+                    "DEPLOY",
                     color = NothingWhite,
-                    fontSize = 14.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 1.5.sp
+                    letterSpacing = 1.sp
                 )
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThresholdControlCard(
+fun CompactThresholdCard(
     param: ThresholdParam,
     onValueChange: (Float) -> Unit
 ) {
-    // Local state representing the current value shown/controlled by the slider
-    var sliderValue by remember(param.key) {
-        mutableStateOf(param.value)
-    }
+    var sliderValue by remember(param.key) { mutableStateOf(param.value) }
 
-    // Sync with external changes (e.g. from ThresholdManager)
     LaunchedEffect(param.value) {
-        if (param.value != sliderValue) {
-            sliderValue = param.value
-        }
+        if (param.value != sliderValue) sliderValue = param.value
     }
 
-    // Helper to apply clamping + stepping and call onValueChange
     fun setValue(rawValue: Float) {
         val clamped = rawValue.coerceIn(param.min, param.max)
         val stepped = if (param.step > 0f) {
             val index = ((clamped - param.min) / param.step).roundToInt()
             (param.min + index * param.step).coerceIn(param.min, param.max)
-        } else {
-            clamped
-        }
+        } else clamped
 
         if (stepped != sliderValue) {
             sliderValue = stepped
@@ -322,139 +295,118 @@ fun ThresholdControlCard(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(
-                16.dp,
-                RoundedCornerShape(20.dp),
-                spotColor = Color.Black.copy(alpha = 0.03f),
-                ambientColor = Color.Black.copy(alpha = 0.03f)
-            )
-            .clip(RoundedCornerShape(20.dp))
-            .background(FrostGray)
-            .border(1.dp, BorderGray, RoundedCornerShape(20.dp))
-            .padding(20.dp)
+            .shadow(4.dp, RoundedCornerShape(12.dp), spotColor = Color.Black.copy(alpha = 0.04f))
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .border(0.5.dp, BorderGray, RoundedCornerShape(12.dp))
+            .padding(12.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Title area
+            // Top Row: Label | Value | Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                // Label (truncated if needed)
+                Text(
+                    param.label,
+                    color = NothingBlack,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Value Display
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
-                        param.key,
+                        if (param.step % 1.0f == 0f)
+                            String.format("%.0f", sliderValue)
+                        else
+                            String.format("%.1f", sliderValue),
+                        color = NothingBlack,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                    Text(
+                        param.unit,
                         color = TextMuted,
                         fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        param.label,
-                        color = NothingBlack,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Medium
                     )
                 }
 
-                // Current value + unit + +/- buttons
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // +/- Buttons (Compact)
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Decrement button
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (sliderValue > param.min) Color(0xFFF5F5F5) else Color.Transparent
-                            )
-                            .clickable(enabled = sliderValue > param.min) {
-                                setValue(sliderValue - param.step)
-                            },
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (sliderValue > param.min) FrostGray else Color.Transparent)
+                            .clickable(enabled = sliderValue > param.min) { setValue(sliderValue - param.step) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Rounded.Remove,
-                            "Decrease",
-                            tint = if (sliderValue > param.min) NothingBlack else TextMuted,
-                            modifier = Modifier.size(18.dp)
+                            null,
+                            tint = if (sliderValue > param.min) NothingBlack else TextMuted.copy(alpha = 0.3f),
+                            modifier = Modifier.size(14.dp)
                         )
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            if (param.step % 1.0f == 0f)
-                                String.format("%.0f", sliderValue)
-                            else
-                                String.format("%.2f", sliderValue),
-                            color = NothingBlack,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        Text(
-                            param.unit,
-                            color = TextMuted,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    // Increment button
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(
-                                if (sliderValue < param.max) Color(0xFFF5F5F5) else Color.Transparent
-                            )
-                            .clickable(enabled = sliderValue < param.max) {
-                                setValue(sliderValue + param.step)
-                            },
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (sliderValue < param.max) FrostGray else Color.Transparent)
+                            .clickable(enabled = sliderValue < param.max) { setValue(sliderValue + param.step) },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             Icons.Rounded.Add,
-                            "Increase",
-                            tint = if (sliderValue < param.max) NothingBlack else TextMuted,
-                            modifier = Modifier.size(18.dp)
+                            null,
+                            tint = if (sliderValue < param.max) NothingBlack else TextMuted.copy(alpha = 0.3f),
+                            modifier = Modifier.size(14.dp)
                         )
                     }
                 }
             }
 
-            // Optional dashed separator
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth(0.25f)
-                    .height(1.dp)
-            ) {
-                drawLine(
-                    color = BorderGray,
-                    start = Offset(0f, 0f),
-                    end = Offset(size.width, 0f),
-                    strokeWidth = 2.dp.toPx(),
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
-                )
-            }
-
-            // Slider control
+            // Compact Slider
             Slider(
                 value = sliderValue,
-                onValueChange = { value -> setValue(value) },
+                onValueChange = { setValue(it) },
                 valueRange = param.min..param.max,
-                // You can set steps if you want discrete ticks visible:
-                // steps = max(0, ((param.max - param.min) / param.step).roundToInt() - 1),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(16.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = NothingBlack,
                     activeTrackColor = NothingBlack,
-                    inactiveTrackColor = BorderGray.copy(alpha = 0.6f)
-                )
+                    inactiveTrackColor = BorderGray.copy(alpha = 0.5f)
+                ),
+                thumb = {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(NothingBlack, CircleShape)
+                            .border(2.dp, Color.White, CircleShape)
+                    )
+                }
             )
         }
     }

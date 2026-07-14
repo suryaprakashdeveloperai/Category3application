@@ -80,7 +80,8 @@ data class ConcentrationDedicatedLiveState(
 
     val alerts: List<String>,
     val connectionStatus: String,
-    val lastUpdated: Long
+    val lastUpdated: Long,
+    val efficiency: Float = 0f
 )
 class ConcentrationDedicatedViewModel(
     private val userName: String = "Operator",
@@ -90,7 +91,7 @@ class ConcentrationDedicatedViewModel(
     companion object {
         private const val TAG = "CONCENTRATION_SSE"
         private const val SSE_URL =
-            "https://rounds-clicks-nutten-put.trycloudflare.com/stream"
+            "https://associate-supplier-alternatives-millennium.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         // OpenPan thresholds (tune)

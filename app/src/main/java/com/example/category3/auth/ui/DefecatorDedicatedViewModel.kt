@@ -116,7 +116,7 @@ class DefecatorDedicatedViewModel(
     companion object {
         private const val TAG = "DEFECATOR_SSE"
         private const val SSE_URL =
-            "https://rounds-clicks-nutten-put.trycloudflare.com/stream"
+            "https://associate-supplier-alternatives-millennium.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         // Thresholds (tune)

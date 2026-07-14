@@ -51,6 +51,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,39 +78,23 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import kotlin.random.Random
 
-// Fallback FontFamily (Remove if FontTelemetryMono is globally defined)
-
-data class DcsProcessState(
-    // 1. Metric Matrix Inputs (Automated PLC Sensors)
-    val rawJuiceFlow: String = "119.0",
-    val clearJuiceYield: String = "84.8",
-    val defecatedJuicePh: String = "7.2",
-    val dchTemperature: String = "105.3",
-
-    // 2. Totalizer Nodes (Manual Shift Entries)
+// State exclusively for the Manual Inputs (Automated PLC data comes from ViewModel now)
+data class DcsManualEntryState(
     val rjInitial: String = "", val rjFinal: String = "", val rjTotal: String = "0.00",
     val cjInitial: String = "", val cjFinal: String = "", val cjTotal: String = "0.00",
     val flocInitial: String = "", val flocFinal: String = "", val flocTotal: String = "0.00",
-
-    // 3. Hardware Interlock Statuses (Driven via PLC)
-    val pump1Status: Boolean = true,
-    val pump2Status: Boolean = false,
-    val vibroscreenStatus: Boolean = true,
-    val rotaryRunning: Boolean = false,
-
     val operatorRemarks: String = "",
     val isSubmitted: Boolean = false
 )
@@ -145,15 +130,20 @@ private val TechAlarmRed = Color(0xFFEF4444)
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun DcsScreen(
+    viewModel: DefecatorDedicatedViewModel = viewModel(factory = DefecatorDedicatedViewModel.provideFactory()),
     onNavigationCallback: () -> Unit
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
+    // Live Automated State from the PLC / SSE Stream
+    val liveState by viewModel.state.collectAsState()
+
+    // Local state for time and manual entries
     val currentDate = remember { LocalDate.now().format(DateTimeFormatter.ISO_DATE) }
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
-    var state by remember { mutableStateOf(DcsProcessState()) }
+    var manualState by remember { mutableStateOf(DcsManualEntryState()) }
 
     val signaturePoints = remember { mutableStateListOf<Offset>() }
     val speechTranslator = remember(context) { MorphicSpeechTranslator(context) }
@@ -182,19 +172,11 @@ fun DcsScreen(
     }
 
     // ============================================================================
-    // 📡 PLC INTERFACE LIVE DATA FEED
+    // 🕒 LIVE CLOCK TICKER
     // ============================================================================
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = LocalTime.now()
-            if (!state.isSubmitted) {
-                state = state.copy(
-                    rawJuiceFlow = String.format("%.1f", 119.0 + Random.nextDouble(-1.0, 1.0)),
-                    clearJuiceYield = String.format("%.1f", 84.8 + Random.nextDouble(-0.3, 0.3)),
-                    defecatedJuicePh = String.format("%.1f", 7.2 + Random.nextDouble(-0.04, 0.04)),
-                    dchTemperature = String.format("%.1f", 105.3 + Random.nextDouble(-0.3, 0.3))
-                )
-            }
             delay(1000)
         }
     }
@@ -228,26 +210,30 @@ fun DcsScreen(
         val headerDetails = @Composable {
             Column {
                 Text(
-                    "DISTRIBUTED CONTROL COCKPIT [PROCESS FLOW MATRIX]",
+                    "DEFECATOR CONTROL COCKPIT [PROCESS FLOW MATRIX]",
                     color = palette.textPrimary, fontSize = if (isPortrait) 13.sp else 16.sp,
-                    fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono,
+                    fontWeight = FontWeight.Black, // fontFamily = FontTelemetryMono, // <-- Assign your font here
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Row(modifier = Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(imageVector = if (isDarkThemeOverride) Icons.Rounded.DarkMode else Icons.Rounded.LightMode, contentDescription = null, tint = if (isDarkThemeOverride) TechAccentBlue else TechWarnOrange, modifier = Modifier.size(14.dp))
-                    Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Switch(
                         checked = isDarkThemeOverride, onCheckedChange = { isDarkThemeOverride = it },
                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = TechAccentBlue),
                         modifier = Modifier.graphicsLayer(scaleX = 0.65f, scaleY = 0.65f)
                     )
+
+                    // Connection Status indicator
+                    val connColor = if (liveState.connectionStatus == "CONNECTED") TechAccentGreen else TechAlarmRed
+                    Text(" | STREAM: ${liveState.connectionStatus}", color = connColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
         val timeDetails = @Composable {
             Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
-                Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+                Text("DATE: $currentDate", fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
+                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -268,13 +254,13 @@ fun DcsScreen(
         DcsFormSectionCard(title = "PROCESS STREAM METRIC MATRIX [PLC LIVE LINK]", icon = Icons.Rounded.Speed, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxSize().padding(bottom = 4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DcsLogInputField("RAW JUICE FLOW (M³/H)", state.rawJuiceFlow, palette, Modifier.weight(1f), isReadOnly = true) {}
-                    DcsLogInputField("CLEAR JUICE YIELD (%)", state.clearJuiceYield, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    DcsLogInputField("CJ FLOW (L/HR)", String.format("%,.0f", liveState.clearJuice.flow), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    DcsLogInputField("HEATER 3 PV (°C)", String.format("%.1f", liveState.process.heater3PvC), palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DcsLogInputField("DEFECATED JUICE (pH)", state.defecatedJuicePh, palette, Modifier.weight(1f), isReadOnly = true) {}
-                    DcsLogInputField("DCH TOWER TEMP (°C)", state.dchTemperature, palette, Modifier.weight(1f), isReadOnly = true) {}
+                    DcsLogInputField("DEFECATOR pH", String.format("%.2f", liveState.process.pH), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    DcsLogInputField("DJ TANK LEVEL (%)", String.format("%.1f", liveState.process.djTankLevel), palette, Modifier.weight(1f), isReadOnly = true) {}
                 }
             }
         }
@@ -283,10 +269,10 @@ fun DcsScreen(
     val HardwareContent = @Composable { modifier: Modifier ->
         DcsFormSectionCard(title = "CRITICAL HARDWARE STATUSES [PLC MONITOR]", icon = Icons.Rounded.Settings, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxSize().padding(vertical = 4.dp)) {
-                HardwareStateBadge("JUICE TRANS PUMP 01", state.pump1Status, palette)
-                HardwareStateBadge("JUICE TRANS PUMP 02", state.pump2Status, palette)
-                HardwareStateBadge("VIBROSCREEN CLUSTER DRIVES", state.vibroscreenStatus, palette)
-                HardwareStateBadge("ROTARY SCREEN TRANSMISSION", state.rotaryRunning, palette)
+                HardwareStateBadge("DJ ACTIVE PUMP", liveState.process.djActivePumpA > 0.5f, palette)
+                HardwareStateBadge("MUD PUMP 01 (DOL)", liveState.mudFilter.mudPump1Status == EquipmentStatus.RUNNING, palette)
+                HardwareStateBadge("FLOCCULANT PUMP 01", liveState.floc.pump1Status == EquipmentStatus.RUNNING, palette)
+                HardwareStateBadge("CLEAR JUICE FILTER", liveState.clearJuice.filterOn, palette)
             }
         }
     }
@@ -296,33 +282,33 @@ fun DcsScreen(
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                 // A. Raw Juice Flow Block
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("A. RAW JUICE FLOW BLOCK (M³)", color = TechAccentBlue, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text("A. RAW JUICE FLOW BLOCK (M³)", color = TechAccentBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DcsLogInputField("INITIAL", state.rjInitial, palette, Modifier.weight(1f)) { state = state.copy(rjInitial = it, rjTotal = autoComputeTotal(it, state.rjFinal), isSubmitted = false) }
-                        DcsLogInputField("FINAL", state.rjFinal, palette, Modifier.weight(1f)) { state = state.copy(rjFinal = it, rjTotal = autoComputeTotal(state.rjInitial, it), isSubmitted = false) }
-                        DcsLogInputField("NET TOTAL", state.rjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
+                        DcsLogInputField("INITIAL", manualState.rjInitial, palette, Modifier.weight(1f)) { manualState = manualState.copy(rjInitial = it, rjTotal = autoComputeTotal(it, manualState.rjFinal), isSubmitted = false) }
+                        DcsLogInputField("FINAL", manualState.rjFinal, palette, Modifier.weight(1f)) { manualState = manualState.copy(rjFinal = it, rjTotal = autoComputeTotal(manualState.rjInitial, it), isSubmitted = false) }
+                        DcsLogInputField("NET TOTAL", manualState.rjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
                     }
                 }
                 HorizontalDivider(color = palette.dividerLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
 
                 // B. Clear Juice Block
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("B. CLEAR JUICE METRIC BLOCK (M³)", color = TechAccentGreen, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text("B. CLEAR JUICE METRIC BLOCK (M³)", color = TechAccentGreen, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DcsLogInputField("INITIAL", state.cjInitial, palette, Modifier.weight(1f)) { state = state.copy(cjInitial = it, cjTotal = autoComputeTotal(it, state.cjFinal), isSubmitted = false) }
-                        DcsLogInputField("FINAL", state.cjFinal, palette, Modifier.weight(1f)) { state = state.copy(cjFinal = it, cjTotal = autoComputeTotal(state.cjInitial, it), isSubmitted = false) }
-                        DcsLogInputField("NET TOTAL", state.cjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
+                        DcsLogInputField("INITIAL", manualState.cjInitial, palette, Modifier.weight(1f)) { manualState = manualState.copy(cjInitial = it, cjTotal = autoComputeTotal(it, manualState.cjFinal), isSubmitted = false) }
+                        DcsLogInputField("FINAL", manualState.cjFinal, palette, Modifier.weight(1f)) { manualState = manualState.copy(cjFinal = it, cjTotal = autoComputeTotal(manualState.cjInitial, it), isSubmitted = false) }
+                        DcsLogInputField("NET TOTAL", manualState.cjTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
                     }
                 }
                 HorizontalDivider(color = palette.dividerLine, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
 
                 // C. Flocculant Feed Block
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("C. FLOCCULANT FEED PIPELINE (KG)", color = TechWarnOrange, fontSize = 12.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text("C. FLOCCULANT FEED PIPELINE (KG)", color = TechWarnOrange, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DcsLogInputField("INITIAL", state.flocInitial, palette, Modifier.weight(1f)) { state = state.copy(flocInitial = it, flocTotal = autoComputeTotal(it, state.flocFinal), isSubmitted = false) }
-                        DcsLogInputField("FINAL", state.flocFinal, palette, Modifier.weight(1f)) { state = state.copy(flocFinal = it, flocTotal = autoComputeTotal(state.flocInitial, it), isSubmitted = false) }
-                        DcsLogInputField("NET TOTAL", state.flocTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
+                        DcsLogInputField("INITIAL", manualState.flocInitial, palette, Modifier.weight(1f)) { manualState = manualState.copy(flocInitial = it, flocTotal = autoComputeTotal(it, manualState.flocFinal), isSubmitted = false) }
+                        DcsLogInputField("FINAL", manualState.flocFinal, palette, Modifier.weight(1f)) { manualState = manualState.copy(flocFinal = it, flocTotal = autoComputeTotal(manualState.flocInitial, it), isSubmitted = false) }
+                        DcsLogInputField("NET TOTAL", manualState.flocTotal, palette, Modifier.weight(1f), isReadOnly = true) {}
                     }
                 }
             }
@@ -340,8 +326,8 @@ fun DcsScreen(
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Consist Verification Shutter", fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Text(text = if (capturedImage != null) "IMAGE VERIFIED ✔" else "Secure visual totalizer log pass.", fontFamily = FontTelemetryMono, color = if (capturedImage != null) TechAccentGreen else palette.textMuted, fontSize = 10.sp)
+                        Text("Consist Verification Shutter", color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(text = if (capturedImage != null) "IMAGE VERIFIED ✔" else "Secure visual totalizer log pass.", color = if (capturedImage != null) TechAccentGreen else palette.textMuted, fontSize = 10.sp)
                     }
 
                     if (capturedImage != null) {
@@ -362,7 +348,7 @@ fun DcsScreen(
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(13.dp))
-                                Text("OPEN PREVIEW", color = TechAccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                                Text("OPEN PREVIEW", color = TechAccentBlue, fontSize = 10.sp, fontWeight = FontWeight.Black)
                             }
                         }
                     }
@@ -380,12 +366,12 @@ fun DcsScreen(
                     .padding(10.dp)
             ) {
                 BasicTextField(
-                    value = state.operatorRemarks, onValueChange = { state = state.copy(operatorRemarks = it, isSubmitted = false) },
-                    textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 13.sp),
+                    value = manualState.operatorRemarks, onValueChange = { manualState = manualState.copy(operatorRemarks = it, isSubmitted = false) },
+                    textStyle = TextStyle(color = palette.textPrimary, fontSize = 13.sp),
                     cursorBrush = SolidColor(palette.textPrimary), modifier = Modifier.fillMaxSize().padding(end = 36.dp),
                     decorationBox = { innerTextField ->
-                        if (state.operatorRemarks.isEmpty()) {
-                            Text(text = "TAP MIC KEY AND STATE VALVE ANOMALIES...", color = if (isListening) TechAlarmRed else palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono)
+                        if (manualState.operatorRemarks.isEmpty()) {
+                            Text(text = "TAP MIC KEY AND STATE VALVE ANOMALIES...", color = if (isListening) TechAlarmRed else palette.textMuted, fontSize = 11.sp)
                         }
                         innerTextField()
                     }
@@ -405,7 +391,7 @@ fun DcsScreen(
                                             onStatusChange = { currentVoiceStatusText = it },
                                             onListeningStateChange = { isListening = it },
                                             onTranslatingStateChange = { isTranslating = it },
-                                            onResultReceived = { state = state.copy(operatorRemarks = it, isSubmitted = false) }
+                                            onResultReceived = { manualState = manualState.copy(operatorRemarks = it, isSubmitted = false) }
                                         )
                                     } else {
                                         (context as? android.app.Activity)?.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 101)
@@ -425,9 +411,9 @@ fun DcsScreen(
         DcsFormSectionCard(title = "OPERATOR SIGNATURE CONTROL WINDOW", icon = Icons.Rounded.Draw, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("DRAW VERIFICATION INTEGRITY TRACE:", color = palette.textPrimary, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text("DRAW VERIFICATION INTEGRITY TRACE:", color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        text = "WIPE PANEL", color = TechAlarmRed, fontSize = 10.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black,
+                        text = "WIPE PANEL", color = TechAlarmRed, fontSize = 10.sp, fontWeight = FontWeight.Black,
                         modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 4.dp, vertical = 2.dp)
                     )
                 }
@@ -438,7 +424,7 @@ fun DcsScreen(
                         .background(palette.glassFill, RoundedCornerShape(8.dp)).border(1.dp, palette.glassBorder, RoundedCornerShape(8.dp))
                 ) {
                     if (signaturePoints.isEmpty()) {
-                        Text(text = "TOUCH AUTHENTICATOR MATRIX ON...", color = palette.textMuted.copy(alpha = 0.4f), fontSize = 11.sp, fontFamily = FontTelemetryMono, modifier = Modifier.align(Alignment.Center))
+                        Text(text = "TOUCH AUTHENTICATOR MATRIX ON...", color = palette.textMuted.copy(alpha = 0.4f), fontSize = 11.sp, modifier = Modifier.align(Alignment.Center))
                     }
                     Canvas(
                         modifier = Modifier.fillMaxSize().pointerInteropFilter { event ->
@@ -483,7 +469,7 @@ fun DcsScreen(
             ) {
                 Text(
                     text = if (signaturePoints.isNotEmpty()) "DCS JOURNAL VERIFIED ✔" else "ESIGN REQUIRED ❌",
-                    color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black
+                    color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontWeight = FontWeight.Black
                 )
             }
         }
@@ -494,16 +480,17 @@ fun DcsScreen(
                     .height(38.dp)
                     .then(if (isPortrait) Modifier.fillMaxWidth() else Modifier.width(220.dp))
                     .clip(RoundedCornerShape(50))
-                    .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
+                    .background(Brush.linearGradient(colors = if (manualState.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
                     .clickable {
                         if (signaturePoints.isNotEmpty()) {
-                            state = state.copy(isSubmitted = true)
+                            manualState = manualState.copy(isSubmitted = true)
+                            // TODO: Dispatch all states (live PLC + Manual Entries) back to your local RoomDB or Server
                             onNavigationCallback()
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                Text("COMMIT DATA TRANSFERS", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                Text("COMMIT DATA TRANSFERS", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
         }
 
@@ -591,7 +578,7 @@ private fun HardwareStateBadge(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = title, color = palette.textPrimary, fontFamily = FontTelemetryMono, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+        Text(text = title, color = palette.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
 
         Box(
             modifier = Modifier
@@ -605,7 +592,6 @@ private fun HardwareStateBadge(
             Text(
                 text = if (isRunning) "RUNNING" else "STOPPED",
                 color = if (isRunning) TechAccentGreen else TechAlarmRed,
-                fontFamily = FontTelemetryMono,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black
             )
@@ -625,11 +611,11 @@ private fun DcsLogInputField(
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(1.dp))
             BasicTextField(
                 value = value, onValueChange = onValueChange,
-                textStyle = TextStyle(fontFamily = FontTelemetryMono, color = if (isReadOnly) TechAccentGreen else palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black),
+                textStyle = TextStyle(color = if (isReadOnly) TechAccentGreen else palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true,
                 readOnly = isReadOnly,
                 cursorBrush = SolidColor(palette.textPrimary), modifier = Modifier.fillMaxWidth()
@@ -652,7 +638,7 @@ private fun DcsFormSectionCard(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(icon, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(16.dp))
-            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(modifier = Modifier.height(8.dp))
         content()

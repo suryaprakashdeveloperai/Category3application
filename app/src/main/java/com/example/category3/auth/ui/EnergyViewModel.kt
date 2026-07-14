@@ -92,7 +92,7 @@ class EnergyViewModel : ViewModel() {
 
     private val raisedAlertIds = ConcurrentHashMap.newKeySet<String>()
 
-    private val SSE_URL = "https://rounds-clicks-nutten-put.trycloudflare.com/stream"
+    private val SSE_URL = "https://associate-supplier-alternatives-millennium.trycloudflare.com/stream"
     private val sseClient = createInsecureSseClient()
 
     init {

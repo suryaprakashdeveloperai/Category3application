@@ -38,11 +38,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Notifications
-import androidx.compose.material.icons.outlined.ShowChart
-import androidx.compose.material.icons.outlined.ViewInAr
-import androidx.compose.material.icons.outlined.WaterDrop
+import androidx.compose.material.icons.outlined.Power
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Thermostat
+import androidx.compose.material.icons.outlined.Waves
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
@@ -54,6 +54,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -88,14 +89,34 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.R
 import com.example.category3.components.RadialAppBar
 import kotlin.math.cos
 import kotlin.math.sin
 
 // ============================================================================
-// 📊 DOMAIN DATA MODELS
+// 🚀 STATEFUL ROUTE / CONTAINER
 // ============================================================================
+@Composable
+fun MillDiagnosticsScreenContainer(
+    onNavigateToScreen: (String) -> Unit = {},
+    viewModel: MillDiagnosticsViewModel = viewModel(
+        factory = MillDiagnosticsViewModel.provideFactory()
+    )
+) {
+    val liveState by viewModel.state.collectAsState()
+
+    MillDiagnosticsHubScreen(
+        state = liveState,
+        onNavigateToScreen = onNavigateToScreen
+    )
+}
+
+// ============================================================================
+// 📊 DOMAIN DATA MODELS (Updated for Equipment & Thresholds)
+// ============================================================================
+
 data class MillDashboardState(
     val userName: String,
     val userRole: String,
@@ -126,10 +147,12 @@ data class EquipmentData(
     val status: EquipmentStatus
 )
 
+// Modified for Equipment Loading & Threshold limits
 data class OverviewChartData(
-    val actualThroughput: Int,
-    val targetThroughput: Int,
-    val designThroughput: Int
+    val currentLoad: Int,
+    val overloadThreshold: Int,
+    val designCapacity: Int,
+    val unit: String
 )
 
 data class KpiDataMill(
@@ -142,7 +165,9 @@ data class KpiDataMill(
 )
 
 enum class EquipmentStatus { RUNNING, STANDBY, FAULT, HEALTHY }
-enum class KpiType { THROUGHPUT, JUICE_FLOW, EXTRACTION, BAGASSE, POWER }
+
+// Modified for specific equipment vitals
+enum class KpiType { VIBRATION, TEMPERATURE, CURRENT, POWER, SPEED }
 
 // ============================================================================
 // 🎨 COLOR PALETTE & MAPPERS
@@ -163,23 +188,23 @@ fun EquipmentStatus.toColor(): Color = when (this) {
 }
 
 fun KpiType.toIcon(): ImageVector = when (this) {
-    KpiType.THROUGHPUT -> Icons.Outlined.ShowChart
-    KpiType.JUICE_FLOW -> Icons.Outlined.WaterDrop
-    KpiType.EXTRACTION -> Icons.Outlined.Insights
-    KpiType.BAGASSE -> Icons.Outlined.ViewInAr
-    KpiType.POWER -> Icons.Outlined.Bolt
+    KpiType.VIBRATION -> Icons.Outlined.Waves
+    KpiType.TEMPERATURE -> Icons.Outlined.Thermostat
+    KpiType.CURRENT -> Icons.Outlined.Bolt
+    KpiType.POWER -> Icons.Outlined.Power
+    KpiType.SPEED -> Icons.Outlined.Speed
 }
 
 fun KpiType.toColor(): Color = when (this) {
-    KpiType.THROUGHPUT -> AccentOrange
-    KpiType.JUICE_FLOW -> StatusBlue
-    KpiType.EXTRACTION -> Color(0xFFA120FF)
-    KpiType.BAGASSE -> Color(0xFFFF9800)
+    KpiType.VIBRATION -> Color(0xFFA120FF)
+    KpiType.TEMPERATURE -> StatusRed
+    KpiType.CURRENT -> StatusBlue
     KpiType.POWER -> StatusGreen
+    KpiType.SPEED -> AccentOrange
 }
 
 // ============================================================================
-// 🧊 GLASS CARD (Renamed to avoid conflict with duplicate elsewhere)
+// 🧊 GLASS CARD
 // ============================================================================
 @Composable
 fun MillGreyFrostGlassCard(
@@ -212,22 +237,37 @@ fun MillGreyFrostGlassCard(
 }
 
 // ============================================================================
-// 📱 MAIN SCREEN
+// 📱 MAIN SCREEN (Stateless UI)
 // ============================================================================
 @Composable
 fun MillDiagnosticsHubScreen(
-    state: MillDashboardState = MockApiData.getMockState(),
+    state: MillDashboardState,
     onNavigateToScreen: (String) -> Unit = {}
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val mainScrollState = rememberScrollState()
 
-    Box(modifier = Modifier.fillMaxSize().background(AppBg)) {
+    // ── FIXED LAYOUT ────────────────────────────────────────────────────────
+    // We use a Row to structure the side-nav and the content, removing the
+    // irritating empty 90dp space on the left and preventing overlaps.
+    Row(modifier = Modifier.fillMaxSize().background(AppBg)) {
+
+        // Dedicated container for the Radial Menu (Prevents overlaps)
+        Box(modifier = Modifier.width(86.dp).fillMaxHeight().zIndex(50f)) {
+            RadialAppBar(
+                modifier = Modifier.align(Alignment.CenterStart),
+                activeSection = "mill_dashboard",
+                onActionSelected = onNavigateToScreen
+            )
+        }
+
+        // Main Scrollable Content
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 90.dp, end = 24.dp, bottom = 24.dp)
+                .weight(1f)
+                .fillMaxHeight()
+                .padding(end = 24.dp, bottom = 24.dp)
                 .verticalScroll(mainScrollState)
         ) {
             TopNavigationBar(userName = state.userName, userRole = state.userRole, onAction = {})
@@ -250,12 +290,6 @@ fun MillDiagnosticsHubScreen(
             Spacer(modifier = Modifier.height(20.dp))
             BottomKpiRow(kpis = state.kpis, isLandscape = isLandscape)
         }
-
-        RadialAppBar(
-            modifier = Modifier.align(Alignment.CenterStart).zIndex(50f),
-            activeSection = "mill_dashboard",
-            onActionSelected = onNavigateToScreen
-        )
     }
 }
 
@@ -269,7 +303,7 @@ fun TopNavigationBar(userName: String, userRole: String, onAction: (String) -> U
     var profileMenuExpanded by remember { mutableStateOf(false) }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 24.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -281,7 +315,7 @@ fun TopNavigationBar(userName: String, userRole: String, onAction: (String) -> U
             }
             MillGreyFrostGlassCard(shape = RoundedCornerShape(24.dp)) {
                 Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Mill Section", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Text("Equipment Vitals", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     Icon(Icons.Filled.ArrowDropDown, null, tint = TextDark)
                 }
             }
@@ -367,7 +401,7 @@ fun MillMotorSection(state: MillDashboardState, modifier: Modifier = Modifier) {
             // ── HEADER BLOCK ─────────────────────────────────────────────────
             Column(modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 0.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Mill Section", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
+                    Text("Mill Drive System", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
                     Spacer(Modifier.width(12.dp))
                     MillGreyFrostGlassCard(shape = RoundedCornerShape(12.dp)) {
                         Row(
@@ -386,7 +420,7 @@ fun MillMotorSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                Text("Batch ID: ${state.batchId} | Started: ${state.startTime}", fontSize = 12.sp, color = TextGray)
+                Text("Batch ID: ${state.batchId} | Shift Started: ${state.startTime}", fontSize = 12.sp, color = TextGray)
             }
 
             // ── MAIN IMAGE AREA ──────────────────────────────────────────────
@@ -494,12 +528,9 @@ fun BottomImageArcCarousel(
             },
         contentAlignment = Alignment.BottomCenter
     ) {
-
-        // ── Step 1: Draw the curved frosted band ─────────────────────────────
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-
             val curveTopY = 55.dp.toPx()
             val controlY = -18.dp.toPx()
 
@@ -530,7 +561,6 @@ fun BottomImageArcCarousel(
             )
         }
 
-        // ── Step 2: Orange downward-pointing triangle indicator ──────────────
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -547,15 +577,11 @@ fun BottomImageArcCarousel(
             }
         }
 
-        // ── Step 3: Carousel items along the arc ─────────────────────────────
         val arcRadiusDp = 420f
         val itemSizeActive = 68.dp
         val itemSizeInactive = 44.dp
 
-        val springSpec = spring<Float>(
-            dampingRatio = 0.8f,
-            stiffness = Spring.StiffnessLow
-        )
+        val springSpec = spring<Float>(dampingRatio = 0.8f, stiffness = Spring.StiffnessLow)
 
         motors.forEachIndexed { index, motor ->
             val diff = index - selectedIndex
@@ -583,10 +609,7 @@ fun BottomImageArcCarousel(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .offset(
-                        x = animX.dp,
-                        y = (animY - arcRadiusDp * 0.003f).dp + 4.dp
-                    )
+                    .offset(x = animX.dp, y = (animY - arcRadiusDp * 0.003f).dp + 4.dp)
                     .zIndex(zIndex)
                     .scale(animScale)
                     .alpha(animAlpha)
@@ -672,7 +695,7 @@ fun FloatingStatusCard(
 }
 
 // ============================================================================
-// 📊 OVERVIEW SECTION (Right Panel)
+// 📊 OVERVIEW SECTION (Equipment Data Reworked)
 // ============================================================================
 @Composable
 fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
@@ -684,13 +707,13 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Overview", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
+                    Text("Equipment Load Analytics", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
                     MillGreyFrostGlassCard(shape = RoundedCornerShape(12.dp)) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Today", fontSize = 12.sp, color = TextDark, fontWeight = FontWeight.Bold)
+                            Text("Real-Time", fontSize = 12.sp, color = TextDark, fontWeight = FontWeight.Bold)
                             Icon(Icons.Filled.ArrowDropDown, null, tint = TextDark, modifier = Modifier.size(16.dp))
                         }
                     }
@@ -705,53 +728,59 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                             val rOuter = minOf(w / 2f, h) * 0.95f
                             val rMid = rOuter * 0.7f; val rInner = rOuter * 0.4f
 
+                            // Outer Arc: Design Capacity
                             drawArc(
                                 AccentOrangeLight, 180f, 180f, true,
                                 Offset(cx - rOuter, cy - rOuter), Size(rOuter * 2, rOuter * 2)
                             )
+                            // Mid Arc: Overload Threshold Limit (Warning color)
                             drawArc(
-                                Color(0xFFFFB3A1).copy(0.6f), 180f, 180f, true,
+                                StatusRed.copy(0.2f), 180f, 180f, true,
                                 Offset(cx - rMid, cy - rMid), Size(rMid * 2, rMid * 2)
                             )
+                            // Inner Arc: Current Load
                             drawArc(
                                 Color.White, 180f, 180f, true,
                                 Offset(cx - rInner, cy - rInner), Size(rInner * 2, rInner * 2)
                             )
 
                             val dot = 3.dp.toPx()
-                            drawCircle(AccentOrange, dot, Offset(cx, cy - rOuter))
-                            drawCircle(AccentOrange, dot, Offset(cx, cy - rMid))
+                            drawCircle(AccentOrangeLight, dot, Offset(cx, cy - rOuter))
+                            drawCircle(StatusRed, dot, Offset(cx, cy - rMid))
                             drawCircle(AccentOrange, dot, Offset(cx, cy - rInner))
 
                             val lbl = TextStyle(fontSize = 10.sp, color = TextDark, fontWeight = FontWeight.Bold)
-                            val ax = TextStyle(fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Medium)
-                            val v1 = "${state.chartData.designThroughput / 1000}K+"
-                            val v2 = "${state.chartData.targetThroughput / 1000}K+"
-                            val v3 = "${(state.chartData.targetThroughput * 0.2).toInt() / 1000}K+"
+                            val unit = state.chartData.unit
+
+                            val v1 = "${state.chartData.designCapacity} $unit"
+                            val v2 = "${state.chartData.overloadThreshold} $unit"
+                            val v3 = "${state.chartData.currentLoad} $unit"
 
                             drawText(
                                 textMeasurer, v1, style = lbl,
                                 topLeft = Offset(cx - textMeasurer.measure(v1, lbl).size.width / 2f, cy - rOuter - 20f)
                             )
                             drawText(
-                                textMeasurer, v2, style = lbl,
+                                textMeasurer, v2, style = lbl.copy(color = StatusRed),
                                 topLeft = Offset(cx - textMeasurer.measure(v2, lbl).size.width / 2f, cy - rMid - 20f)
                             )
                             drawText(
                                 textMeasurer, v3, style = lbl,
                                 topLeft = Offset(cx - textMeasurer.measure(v3, lbl).size.width / 2f, cy - rInner - 20f)
                             )
-                            drawText(textMeasurer, "2023", style = ax, topLeft = Offset(cx - rOuter - 16f, cy + 12.dp.toPx()))
-                            drawText(textMeasurer, "2024", style = ax, topLeft = Offset(cx - 16f, cy + 12.dp.toPx()))
-                            drawText(textMeasurer, "2025", style = ax, topLeft = Offset(cx + rOuter - 16f, cy + 12.dp.toPx()))
+
+                            val ax = TextStyle(fontSize = 10.sp, color = TextGray, fontWeight = FontWeight.Medium)
+                            drawText(textMeasurer, "Min", style = ax, topLeft = Offset(cx - rOuter - 16f, cy + 12.dp.toPx()))
+                            drawText(textMeasurer, "Avg", style = ax, topLeft = Offset(cx - 16f, cy + 12.dp.toPx()))
+                            drawText(textMeasurer, "Max", style = ax, topLeft = Offset(cx + rOuter - 16f, cy + 12.dp.toPx()))
                         }
                     }
                     Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
-                        LegendItem("Actual", "${String.format("%,d", state.chartData.actualThroughput)} kg", AccentOrange)
+                        LegendItem("Actual Load", "${state.chartData.currentLoad} ${state.chartData.unit}", AccentOrange)
                         Spacer(Modifier.height(14.dp))
-                        LegendItem("Target", "${String.format("%,d", state.chartData.targetThroughput)} kg", Color(0xFFFFB3A1))
+                        LegendItem("Threshold Limit", "${state.chartData.overloadThreshold} ${state.chartData.unit}", StatusRed)
                         Spacer(Modifier.height(14.dp))
-                        LegendItem("Design", "${String.format("%,d", state.chartData.designThroughput)} kg", AccentOrangeLight)
+                        LegendItem("Design Capacity", "${state.chartData.designCapacity} ${state.chartData.unit}", AccentOrangeLight)
                     }
                 }
             }
@@ -760,7 +789,7 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
         MillGreyFrostGlassCard(modifier = Modifier.fillMaxWidth().weight(1f)) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Section Status", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Text("Overall Status", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(state.sectionStatus.name, fontSize = 13.sp, color = state.sectionStatus.toColor(), fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(6.dp))
@@ -772,7 +801,7 @@ fun OverviewSection(state: MillDashboardState, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Efficiency", fontSize = 12.sp, color = TextGray)
+                        Text("Drive Efficiency", fontSize = 12.sp, color = TextGray)
                         Text("${state.efficiency}%", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = TextDark)
                     }
                     Column(modifier = Modifier.weight(1f)) {
@@ -798,18 +827,19 @@ fun LegendItem(label: String, value: String, color: Color) {
 }
 
 // ============================================================================
-// 📈 BOTTOM KPI ROW WITH LIVE BADGE
+// 📈 BOTTOM KPI ROW WITH LIVE BADGE & SMOOTH CHARTS
 // ============================================================================
 @Composable
 fun BottomKpiRow(kpis: List<KpiDataMill>, isLandscape: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+            .let { if (!isLandscape) it.horizontalScroll(rememberScrollState()) else it },
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         kpis.forEach { kpi ->
-            KpiCard(modifier = if (isLandscape) Modifier.weight(1f) else Modifier.width(190.dp), data = kpi)
+            val cardModifier = if (isLandscape) Modifier.weight(1f) else Modifier.width(220.dp)
+            KpiCard(modifier = cardModifier, data = kpi)
         }
     }
 }
@@ -824,7 +854,7 @@ fun KpiCard(modifier: Modifier, data: KpiDataMill) {
     )
 
     MillGreyFrostGlassCard(modifier = modifier) {
-        Column(modifier = Modifier.fillMaxWidth().padding(18.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 18.dp, start = 18.dp, end = 18.dp, bottom = 12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -853,24 +883,60 @@ fun KpiCard(modifier: Modifier, data: KpiDataMill) {
                 Icon(
                     if (data.isUpwardTrend) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward,
                     null,
-                    tint = if (data.isUpwardTrend) StatusGreen else AccentOrange,
+                    tint = if (data.isUpwardTrend) StatusRed else StatusGreen, // For Equipment metrics, rising typically means hotter/more load
                     modifier = Modifier.size(12.dp)
                 )
-                Text(" ${data.changeString} vs Yesterday", fontSize = 10.sp, color = TextGray)
+                Text(" ${data.changeString} vs baseline", fontSize = 10.sp, color = TextGray)
             }
-            Spacer(Modifier.height(12.dp))
-            Canvas(modifier = Modifier.fillMaxWidth().height(24.dp)) {
+            Spacer(Modifier.height(16.dp))
+
+            Canvas(modifier = Modifier.fillMaxWidth().height(36.dp)) {
                 if (data.trendHistory.isNotEmpty()) {
-                    val path = Path()
+                    val linePath = Path()
+                    val fillPath = Path()
+
                     val stepX = size.width / (data.trendHistory.size - 1).coerceAtLeast(1)
                     val maxV = data.trendHistory.maxOrNull() ?: 1f
                     val minV = data.trendHistory.minOrNull() ?: 0f
-                    val range = (maxV - minV).coerceAtLeast(0.01f)
-                    data.trendHistory.forEachIndexed { i, p ->
-                        val y = size.height - ((p - minV) / range * size.height)
-                        if (i == 0) path.moveTo(0f, y) else path.lineTo(i * stepX, y)
+                    val range = (maxV - minV).coerceAtLeast(0.01f) * 1.2f
+                    val yOffset = (range - (maxV - minV)) / 2f
+
+                    var prevX = 0f
+                    var prevY = size.height - (((data.trendHistory[0] - minV + yOffset) / range) * size.height)
+
+                    linePath.moveTo(prevX, prevY)
+                    fillPath.moveTo(prevX, size.height)
+                    fillPath.lineTo(prevX, prevY)
+
+                    for (i in 1 until data.trendHistory.size) {
+                        val x = i * stepX
+                        val y = size.height - (((data.trendHistory[i] - minV + yOffset) / range) * size.height)
+
+                        val controlPointX = (prevX + x) / 2f
+                        linePath.cubicTo(controlPointX, prevY, controlPointX, y, x, y)
+                        fillPath.cubicTo(controlPointX, prevY, controlPointX, y, x, y)
+
+                        prevX = x
+                        prevY = y
                     }
-                    drawPath(path, accentColor, style = Stroke(4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+
+                    fillPath.lineTo(prevX, size.height)
+                    fillPath.close()
+
+                    drawPath(
+                        path = fillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(accentColor.copy(alpha = 0.35f), Color.Transparent),
+                            startY = 0f,
+                            endY = size.height
+                        )
+                    )
+
+                    drawPath(
+                        path = linePath,
+                        color = accentColor,
+                        style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
                 }
             }
         }
@@ -878,33 +944,36 @@ fun KpiCard(modifier: Modifier, data: KpiDataMill) {
 }
 
 // ============================================================================
-// 📡 MOCK DATA
+// 📡 MOCK DATA (Updated for Equipment Specs)
 // ============================================================================
 object MockApiData {
     fun getMockState() = MillDashboardState(
-        userName = "Production", userRole = "Production",
-        batchId = "B-250520-01", startTime = "08:15 AM",
+        userName = "Engineering", userRole = "Maintenance Lead",
+        batchId = "M-250520-01", startTime = "06:00 AM",
         sectionStatus = EquipmentStatus.HEALTHY,
-        efficiency = 92.2, oee = 87.4,
+        efficiency = 94.5, oee = 89.2,
         motors = listOf(
-            MotorData("m1", "Mill Motor 1", "98%", "Healthy", EquipmentStatus.HEALTHY, R.drawable.motor_image),
-            MotorData("m2", "Mill Motor 2", "72%", "Warning", EquipmentStatus.FAULT, R.drawable.motor_image),
-            MotorData("m3", "Mill Motor 3", "Standby", "Ready", EquipmentStatus.STANDBY, R.drawable.motor_image),
-            MotorData("m4", "Mill Motor 4", "99%", "Healthy", EquipmentStatus.HEALTHY, R.drawable.motor_image),
-            MotorData("m5", "Mill Motor 5", "95%", "Healthy", EquipmentStatus.HEALTHY, R.drawable.motor_image)
+            MotorData("m1", "Main Drive 1", "98%", "Healthy", EquipmentStatus.HEALTHY, R.drawable.motor_image),
+            MotorData("m2", "Gearbox Motor", "82%", "Warning", EquipmentStatus.FAULT, R.drawable.motor_image),
+            MotorData("m3", "Aux Pump A", "Standby", "Ready", EquipmentStatus.STANDBY, R.drawable.motor_image),
+            MotorData("m4", "Cooling Fan 1", "99%", "Healthy", EquipmentStatus.HEALTHY, R.drawable.motor_image),
+            MotorData("m5", "Lubrication Sys", "95%", "Healthy", EquipmentStatus.HEALTHY, R.drawable.motor_image)
         ),
         connectedEquipment = listOf(
-            EquipmentData("Raw Juice Pump 1", "100%", "Running", EquipmentStatus.RUNNING),
-            EquipmentData("Raw Juice Pump 2", "Standby", "Ready", EquipmentStatus.STANDBY),
-            EquipmentData("Rotary Screen", "99%", "Running", EquipmentStatus.RUNNING)
+            EquipmentData("Inlet Pressure", "4.2 bar", "Normal", EquipmentStatus.RUNNING),
+            EquipmentData("Vibration Sensor", "Active", "Monitoring", EquipmentStatus.STANDBY),
+            EquipmentData("Bearing Temp", "65°C", "Safe", EquipmentStatus.RUNNING)
         ),
-        chartData = OverviewChartData(72450, 85000, 110000),
+        // Updated chart data mapping directly to actual load vs threshold limits
+        chartData = OverviewChartData(currentLoad = 412, overloadThreshold = 480, designCapacity = 550, unit = "kW"),
+
+        // Updated KPIs tailored exactly for equipment monitoring
         kpis = listOf(
-            KpiDataMill(KpiType.THROUGHPUT, "Throughput", "72,450 kg/hr", "8.5%", true, listOf(50f, 60f, 65f, 55f, 70f, 72f)),
-            KpiDataMill(KpiType.JUICE_FLOW, "Raw Juice Flow", "45,300 L/hr", "6.2%", true, listOf(40f, 42f, 41f, 44f, 43f, 45f)),
-            KpiDataMill(KpiType.EXTRACTION, "Extraction %", "93.6%", "1.8%", true, listOf(90f, 91f, 92f, 92.5f, 93f, 93.6f)),
-            KpiDataMill(KpiType.BAGASSE, "Bagasse %", "28.4%", "2.1%", false, listOf(30f, 29.5f, 29f, 28.8f, 28.5f, 28.4f)),
-            KpiDataMill(KpiType.POWER, "Power Consumption", "485 kW", "3.6%", false, listOf(500f, 495f, 490f, 488f, 486f, 485f))
+            KpiDataMill(KpiType.VIBRATION, "Vibration", "4.2 mm/s", "0.3%", true, listOf(4.0f, 4.1f, 4.2f, 4.1f, 4.2f, 4.3f)),
+            KpiDataMill(KpiType.TEMPERATURE, "Motor Temp", "75°C", "2.1%", true, listOf(70f, 72f, 74f, 75f, 75f, 76f)),
+            KpiDataMill(KpiType.CURRENT, "Phase Current", "310 A", "1.5%", false, listOf(320f, 315f, 312f, 310f, 310f, 308f)),
+            KpiDataMill(KpiType.POWER, "Active Power", "412 kW", "0.8%", true, listOf(405f, 408f, 410f, 412f, 412f, 415f)),
+            KpiDataMill(KpiType.SPEED, "Rotor Speed", "1480 RPM", "0.0%", false, listOf(1485f, 1482f, 1480f, 1480f, 1480f, 1478f))
         )
     )
 }

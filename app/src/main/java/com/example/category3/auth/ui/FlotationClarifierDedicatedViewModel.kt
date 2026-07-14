@@ -25,6 +25,9 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
+// --- Data Models ---
+
+
 data class ClarifierUnitLive(
     val name: String,
     val inletOpen: Boolean,
@@ -41,23 +44,24 @@ data class FlotationClarifierDashboardState(
     val startTime: String,
     val sectionStatus: EquipmentStatus,
     val units: List<ClarifierUnitLive>,
-    val kpis: List<Pair<String, String>> // (label, value) simple KPI cards
+    val kpis: List<Pair<String, String>>
 )
 
 data class FlotationClarifierLiveState(
     val dashboard: FlotationClarifierDashboardState,
-
     val vacuumPumpStatus: EquipmentStatus,
-    val fcMondFlow: Float,        // OP_FCMOND_VolumetricFlow (as provided)
+    val fcMondFlow: Float,
     val clearJuiceTankLevel: Float,
-    val clearJuiceFlowRaw: Float, // CJ_JuiceFlow (may be m3/hr)
+    val clearJuiceFlowRaw: Float,
     val clearJuiceDensity: Float,
     val cjFilterOn: Boolean,
-
     val alerts: List<String>,
     val connectionStatus: String,
     val lastUpdated: Long
 )
+
+// Assume this exists in your project, added here for completeness
+
 class FlotationClarifierDedicatedViewModel(
     private val userName: String = "Operator",
     private val userRole: String = "Shift Engineer"
@@ -65,10 +69,8 @@ class FlotationClarifierDedicatedViewModel(
 
     companion object {
         private const val TAG = "FC_SSE"
-        private const val SSE_URL =
-            "https://rounds-clicks-nutten-put.trycloudflare.com/stream"
+        private const val SSE_URL = "https://associate-supplier-alternatives-millennium.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
-
         private const val SPEED_RUNNING_MIN = 1f
 
         fun provideFactory(
@@ -81,10 +83,14 @@ class FlotationClarifierDedicatedViewModel(
         }
     }
 
-    private val gson = Gson()
+    // ✅ OPTIMIZATION: Lazy initialization prevents blocking the Main Thread
+    private val gson by lazy { Gson() }
+
     private var eventSource: EventSource? = null
     private var reconnectJob: Job? = null
-    private val sseClient = buildInsecureClient()
+
+    // ✅ OPTIMIZATION: Do not build OkHttp on the Main Thread
+    private var sseClient: OkHttpClient? = null
 
     private val seed = FlotationClarifierDashboardState(
         userName = userName,
@@ -92,7 +98,7 @@ class FlotationClarifierDedicatedViewModel(
         batchId = "BATCH-000",
         startTime = "—",
         sectionStatus = EquipmentStatus.STANDBY,
-        units = emptyList(),
+        units = emptyList(), // UI will show loader while this is empty
         kpis = emptyList()
     )
 
@@ -112,11 +118,19 @@ class FlotationClarifierDedicatedViewModel(
     )
     val state = _state.asStateFlow()
 
-    init { startStream() }
+    init {
+        // ✅ OPTIMIZATION: Launch heavy SSL/Network setup on the IO thread
+        viewModelScope.launch(Dispatchers.IO) {
+            sseClient = buildInsecureClient()
+            startStream()
+        }
+    }
 
     private fun startStream() {
         eventSource?.cancel()
         reconnectJob?.cancel()
+
+        val client = sseClient ?: return // Ensure client is built
 
         val request = Request.Builder()
             .url(SSE_URL)
@@ -124,7 +138,7 @@ class FlotationClarifierDedicatedViewModel(
             .header("Cache-Control", "no-cache")
             .build()
 
-        eventSource = EventSources.createFactory(sseClient)
+        eventSource = EventSources.createFactory(client)
             .newEventSource(request, object : EventSourceListener() {
                 override fun onOpen(source: EventSource, response: Response) {
                     _state.update { it.copy(connectionStatus = "CONNECTED") }
@@ -150,7 +164,8 @@ class FlotationClarifierDedicatedViewModel(
 
     private fun scheduleReconnect() {
         if (reconnectJob?.isActive == true) return
-        reconnectJob = viewModelScope.launch {
+        // ✅ OPTIMIZATION: Reconnect on background thread
+        reconnectJob = viewModelScope.launch(Dispatchers.IO) {
             delay(RECONNECT_DELAY_MS)
             startStream()
         }
@@ -187,36 +202,21 @@ class FlotationClarifierDedicatedViewModel(
                     else -> "Stopped"
                 }
 
-                return ClarifierUnitLive(
-                    name = "Clarifier FC$idx",
-                    inletOpen = inlet,
-                    outletOpen = outlet,
-                    vfdSpeedPct = speed,
-                    status = status,
-                    statusText = text
-                )
+                return ClarifierUnitLive("Clarifier FC$idx", inlet, outlet, speed, status, text)
             }
 
             val units = listOf(buildUnit(1), buildUnit(2), buildUnit(3))
 
-            val vacuumPump = if (tag("PcFilter_VacuumPump_Status(DOL)") >= 1f)
-                EquipmentStatus.RUNNING else EquipmentStatus.STANDBY
-
+            val vacuumPump = if (tag("PcFilter_VacuumPump_Status(DOL)") >= 1f) EquipmentStatus.RUNNING else EquipmentStatus.STANDBY
             val fcMondFlow = tag("OP_FCMOND_VolumetricFlow")
-
             val cjTank = tag("Clear Juice Tank Level")
             val cjFlowRaw = tag("CJ_JuiceFlow")
             val cjDensity = tag("CJ_JuiceDensity")
             val cjFilterOn = tag("CJ_Filter") >= 1f
 
-            // Alerts
             val alerts = buildList {
-                units.filter { it.status == EquipmentStatus.FAULT }.forEach {
-                    add("⚠ ${it.name}: ${it.statusText}")
-                }
-                if (vacuumPump != EquipmentStatus.RUNNING) {
-                    add("⚠ PC Filter Vacuum Pump is OFF")
-                }
+                units.filter { it.status == EquipmentStatus.FAULT }.forEach { add("⚠ ${it.name}: ${it.statusText}") }
+                if (vacuumPump != EquipmentStatus.RUNNING) add("⚠ PC Filter Vacuum Pump is OFF")
             }
 
             val sectionStatus = when {
@@ -225,7 +225,6 @@ class FlotationClarifierDedicatedViewModel(
                 else -> EquipmentStatus.STANDBY
             }
 
-            // Simple KPIs
             val cjFlowLhr = if (cjFlowRaw in 0f..200f) cjFlowRaw * 1000f else cjFlowRaw
             val kpis = listOf(
                 "FC1 Speed" to "%.1f%%".format(units[0].vfdSpeedPct),
@@ -240,26 +239,16 @@ class FlotationClarifierDedicatedViewModel(
             val startTime = deriveShiftStart(tsMs)
 
             val dashboardUpdated = _state.value.dashboard.copy(
-                userName = userName,
-                userRole = userRole,
-                batchId = batchId,
-                startTime = startTime,
-                sectionStatus = sectionStatus,
-                units = units,
-                kpis = kpis
+                userName = userName, userRole = userRole, batchId = batchId,
+                startTime = startTime, sectionStatus = sectionStatus, units = units, kpis = kpis
             )
 
             _state.update {
                 it.copy(
-                    dashboard = dashboardUpdated,
-                    vacuumPumpStatus = vacuumPump,
-                    fcMondFlow = fcMondFlow,
-                    clearJuiceTankLevel = cjTank,
-                    clearJuiceFlowRaw = cjFlowRaw,
-                    clearJuiceDensity = cjDensity,
-                    cjFilterOn = cjFilterOn,
-                    alerts = alerts,
-                    connectionStatus = "CONNECTED",
+                    dashboard = dashboardUpdated, vacuumPumpStatus = vacuumPump,
+                    fcMondFlow = fcMondFlow, clearJuiceTankLevel = cjTank,
+                    clearJuiceFlowRaw = cjFlowRaw, clearJuiceDensity = cjDensity,
+                    cjFilterOn = cjFilterOn, alerts = alerts, connectionStatus = "CONNECTED",
                     lastUpdated = System.currentTimeMillis()
                 )
             }
@@ -270,8 +259,7 @@ class FlotationClarifierDedicatedViewModel(
 
     private fun deriveBatchId(tsMs: Long): String {
         if (tsMs <= 0) return "BATCH-000"
-        val day = java.text.SimpleDateFormat("ddMM", java.util.Locale.US)
-            .format(java.util.Date(tsMs))
+        val day = java.text.SimpleDateFormat("ddMM", java.util.Locale.US).format(java.util.Date(tsMs))
         return "BATCH-$day"
     }
 
@@ -305,6 +293,6 @@ class FlotationClarifierDedicatedViewModel(
         super.onCleared()
         eventSource?.cancel()
         reconnectJob?.cancel()
-        sseClient.dispatcher.executorService.shutdown()
+        sseClient?.dispatcher?.executorService?.shutdown()
     }
 }

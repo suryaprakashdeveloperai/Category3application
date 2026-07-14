@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.rounded.MicNone
 import androidx.compose.material.icons.rounded.Notes
 import androidx.compose.material.icons.rounded.Opacity
 import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -41,6 +44,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,27 +74,26 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.utils.MorphicSpeechTranslator
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import kotlin.random.Random
 
-// Fallback FontFamily (Remove if FontTelemetryMono is globally defined in your theme)
-
-private data class FlotationClarifierState(
+// State for Manual Inputs & Lab Data
+data class FlotationClarifierManualState(
     val batchNo: String = "B-2026-06",
     val clarifierNo: String = "CLR-02",
     val startTime: String = "14:00",
     val endTime: String = "14:45",
     val duration: String = "45 Min",
-    val sodaAddedGram: String = "250",
-    val juiceInletPh: String = "5.20",
-    val juiceOutletPh: String = "7.10",
-    val clearJuiceTurbidity: String = "12.4",
-    val clearJuicePurity: String = "98.2",
-    val solidAdded: String = "15.8",
+    val sodaAddedGram: String = "",
+    val solidAdded: String = "",
+    val juiceInletPh: String = "",
+    val juiceOutletPh: String = "",
+    val clearJuiceTurbidity: String = "",
+    val clearJuicePurity: String = "",
     val remarks: String = "",
     val isSubmitted: Boolean = false
 )
@@ -126,6 +129,7 @@ private val TechAlarmRed = Color(0xFFEF4444)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FlotationClarifierScreen(
+    viewModel: FlotationClarifierDedicatedViewModel = viewModel(factory = FlotationClarifierDedicatedViewModel.provideFactory()),
     onRaiseTicket: (String) -> Unit,
     onNavigationCallback: () -> Unit
 ) {
@@ -133,9 +137,12 @@ fun FlotationClarifierScreen(
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
+    // Live Automated State from the PLC / SSE Stream
+    val liveState by viewModel.state.collectAsState()
+
     val currentDate = remember { LocalDate.now().format(DateTimeFormatter.ISO_DATE) }
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
-    var state by remember { mutableStateOf(FlotationClarifierState()) }
+    var manualState by remember { mutableStateOf(FlotationClarifierManualState()) }
 
     val signaturePoints = remember { mutableStateListOf<Offset>() }
 
@@ -147,17 +154,10 @@ fun FlotationClarifierScreen(
     var isDarkThemeOverride by remember { mutableStateOf(false) }
     val palette = getClarifierDynamicMorphicPalette(isDark = isDarkThemeOverride)
 
+    // Clock Ticker
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = LocalTime.now()
-            if (!state.isSubmitted) {
-                state = state.copy(
-                    juiceInletPh = String.format("%.2f", 5.20 + Random.nextDouble(-0.05, 0.05)),
-                    juiceOutletPh = String.format("%.2f", 7.08 + Random.nextDouble(-0.03, 0.03)),
-                    clearJuiceTurbidity = String.format("%.1f", 12.4 + Random.nextDouble(-0.3, 0.3)),
-                    clearJuicePurity = String.format("%.1f", 98.2 + Random.nextDouble(-0.1, 0.1))
-                )
-            }
             delay(1000)
         }
     }
@@ -193,12 +193,12 @@ fun FlotationClarifierScreen(
                 Text(
                     "FLOTATION CLARIFIER CONTROL MATRIX",
                     color = palette.textPrimary, fontSize = if(isPortrait) 13.sp else 15.sp,
-                    fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono,
+                    fontWeight = FontWeight.Black, // fontFamily = FontTelemetryMono,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Row(modifier = Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(imageVector = if (isDarkThemeOverride) Icons.Rounded.DarkMode else Icons.Rounded.LightMode, contentDescription = null, tint = if (isDarkThemeOverride) TechAccentBlue else TechWarnOrange, modifier = Modifier.size(14.dp))
-                    Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold)
+                    Text(text = if (isDarkThemeOverride) "GLASS MODE: DARK" else "GLASS MODE: LIGHT", color = palette.textMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Switch(
                         checked = isDarkThemeOverride, onCheckedChange = { isDarkThemeOverride = it },
                         colors = SwitchDefaults.colors(
@@ -208,13 +208,17 @@ fun FlotationClarifierScreen(
                         ),
                         modifier = Modifier.graphicsLayer(scaleX = 0.65f, scaleY = 0.65f)
                     )
+
+                    // Connection Status Indicator
+                    val connColor = if (liveState.connectionStatus == "CONNECTED") TechAccentGreen else TechAlarmRed
+                    Text(" | STREAM: ${liveState.connectionStatus}", color = connColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
         val timeDetails = @Composable {
             Column(horizontalAlignment = if (isPortrait) Alignment.Start else Alignment.End) {
-                Text("DATE: $currentDate", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
-                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontFamily = FontTelemetryMono, fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
+                Text("DATE: $currentDate", fontSize = 11.sp, color = palette.textMuted, fontWeight = FontWeight.SemiBold)
+                Text("TIME: ${currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"))} | $currentShift", fontSize = 11.sp, color = TechWarnOrange, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -231,38 +235,70 @@ fun FlotationClarifierScreen(
         }
     }
 
+    // --- NEW LIVE PLC DATA PANELS ---
+    val LivePLCContent = @Composable { modifier: Modifier ->
+        ClarifierFormSectionCard(title = "LIVE PROCESS TELEMETRY", icon = Icons.Rounded.Speed, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val cjFlowAdj = if (liveState.clearJuiceFlowRaw in 0f..200f) liveState.clearJuiceFlowRaw * 1000f else liveState.clearJuiceFlowRaw
+                    ClarifierLogInputField("CJ FLOW (L/hr)", String.format("%,.0f", cjFlowAdj), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    ClarifierLogInputField("CJ TANK LEVEL (%)", String.format("%.1f", liveState.clearJuiceTankLevel), palette, Modifier.weight(1f), isReadOnly = true) {}
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ClarifierLogInputField("CJ DENSITY", String.format("%.2f", liveState.clearJuiceDensity), palette, Modifier.weight(1f), isReadOnly = true) {}
+                    ClarifierLogInputField("FC MOND FLOW", String.format("%.1f", liveState.fcMondFlow), palette, Modifier.weight(1f), isReadOnly = true) {}
+                }
+            }
+        }
+    }
+
+    val EquipmentContent = @Composable { modifier: Modifier ->
+        ClarifierFormSectionCard(title = "CRITICAL HARDWARE [LIVE]", icon = Icons.Rounded.Settings, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                HardwareStateBadge("PC VACUUM PUMP", liveState.vacuumPumpStatus == EquipmentStatus.RUNNING, palette)
+                HardwareStateBadge("CJ FILTER ACTUATOR", liveState.cjFilterOn, palette)
+
+                // Render the 3 FC Units dynamically
+                liveState.dashboard.units.forEach { unit ->
+                    HardwareStateBadge(unit.name, unit.status == EquipmentStatus.RUNNING, palette)
+                }
+            }
+        }
+    }
+
+    // --- MANUAL ENTRY PANELS ---
     val TimelinesContent = @Composable { modifier: Modifier ->
         ClarifierFormSectionCard(title = "BATCH SCHEDULING TIMELINES", icon = Icons.Rounded.Schedule, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClarifierLogInputField("BATCH NUMBER", state.batchNo, palette, Modifier.weight(1f)) { state = state.copy(batchNo = it, isSubmitted = false) }
-                    ClarifierLogInputField("CLARIFIER ID UNIT", state.clarifierNo, palette, Modifier.weight(1f)) { state = state.copy(clarifierNo = it, isSubmitted = false) }
+                    ClarifierLogInputField("BATCH NUMBER", manualState.batchNo, palette, Modifier.weight(1f)) { manualState = manualState.copy(batchNo = it, isSubmitted = false) }
+                    ClarifierLogInputField("CLARIFIER ID UNIT", manualState.clarifierNo, palette, Modifier.weight(1f)) { manualState = manualState.copy(clarifierNo = it, isSubmitted = false) }
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClarifierLogInputField("START TIME", state.startTime, palette, Modifier.weight(1f)) { state = state.copy(startTime = it, isSubmitted = false) }
-                    ClarifierLogInputField("END TIME", state.endTime, palette, Modifier.weight(1f)) { state = state.copy(endTime = it, isSubmitted = false) }
+                    ClarifierLogInputField("START TIME", manualState.startTime, palette, Modifier.weight(1f)) { manualState = manualState.copy(startTime = it, isSubmitted = false) }
+                    ClarifierLogInputField("END TIME", manualState.endTime, palette, Modifier.weight(1f)) { manualState = manualState.copy(endTime = it, isSubmitted = false) }
                 }
-                ClarifierLogInputField("BATCH OPERATION DURATION", state.duration, palette, Modifier.fillMaxWidth()) { state = state.copy(duration = it, isSubmitted = false) }
+                ClarifierLogInputField("BATCH OPERATION DURATION", manualState.duration, palette, Modifier.fillMaxWidth()) { manualState = manualState.copy(duration = it, isSubmitted = false) }
             }
         }
     }
 
     val ChemistryContent = @Composable { modifier: Modifier ->
-        ClarifierFormSectionCard(title = "JUICE CHEMISTRY PARAMETERS", icon = Icons.Rounded.Opacity, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
+        ClarifierFormSectionCard(title = "LAB CHEMISTRY PARAMETERS", icon = Icons.Rounded.Opacity, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 2.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClarifierLogInputField("SODA ADDED (GRAMS)", state.sodaAddedGram, palette, Modifier.weight(1f)) { state = state.copy(sodaAddedGram = it, isSubmitted = false) }
-                    ClarifierLogInputField("SOLID MATERIAL ADDED", state.solidAdded, palette, Modifier.weight(1f)) { state = state.copy(solidAdded = it, isSubmitted = false) }
+                    ClarifierLogInputField("SODA ADDED (GRAMS)", manualState.sodaAddedGram, palette, Modifier.weight(1f)) { manualState = manualState.copy(sodaAddedGram = it, isSubmitted = false) }
+                    ClarifierLogInputField("SOLID MATERIAL ADDED", manualState.solidAdded, palette, Modifier.weight(1f)) { manualState = manualState.copy(solidAdded = it, isSubmitted = false) }
                 }
                 HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClarifierLogInputField("JUICE INLET pH", state.juiceInletPh, palette, Modifier.weight(1f)) { state = state.copy(juiceInletPh = it, isSubmitted = false) }
-                    ClarifierLogInputField("JUICE OUTLET pH", state.juiceOutletPh, palette, Modifier.weight(1f)) { state = state.copy(juiceOutletPh = it, isSubmitted = false) }
+                    ClarifierLogInputField("JUICE INLET pH", manualState.juiceInletPh, palette, Modifier.weight(1f)) { manualState = manualState.copy(juiceInletPh = it, isSubmitted = false) }
+                    ClarifierLogInputField("JUICE OUTLET pH", manualState.juiceOutletPh, palette, Modifier.weight(1f)) { manualState = manualState.copy(juiceOutletPh = it, isSubmitted = false) }
                 }
                 HorizontalDivider(color = palette.dividerLine, thickness = 1.dp)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ClarifierLogInputField("TURBIDITY BASELINE (NTU)", state.clearJuiceTurbidity, palette, Modifier.weight(1f)) { state = state.copy(clearJuiceTurbidity = it, isSubmitted = false) }
-                    ClarifierLogInputField("PURITY COEFFICIENT (%)", state.clearJuicePurity, palette, Modifier.weight(1f)) { state = state.copy(clearJuicePurity = it, isSubmitted = false) }
+                    ClarifierLogInputField("TURBIDITY BASELINE (NTU)", manualState.clearJuiceTurbidity, palette, Modifier.weight(1f)) { manualState = manualState.copy(clearJuiceTurbidity = it, isSubmitted = false) }
+                    ClarifierLogInputField("PURITY COEFFICIENT (%)", manualState.clearJuicePurity, palette, Modifier.weight(1f)) { manualState = manualState.copy(clearJuicePurity = it, isSubmitted = false) }
                 }
             }
         }
@@ -279,19 +315,17 @@ fun FlotationClarifierScreen(
                     .padding(12.dp)
             ) {
                 BasicTextField(
-                    value = state.remarks,
-                    onValueChange = { state = state.copy(remarks = it, isSubmitted = false) },
-                    textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 14.sp),
+                    value = manualState.remarks,
+                    onValueChange = { manualState = manualState.copy(remarks = it, isSubmitted = false) },
+                    textStyle = TextStyle(color = palette.textPrimary, fontSize = 14.sp),
                     cursorBrush = SolidColor(palette.textPrimary),
                     modifier = Modifier.fillMaxSize().padding(end = 32.dp),
                     decorationBox = { innerTextField ->
-                        if (state.remarks.isEmpty()) {
+                        if (manualState.remarks.isEmpty()) {
                             Text(
                                 text = "INPUT LIVE CLARIFICATION ANOMALIES, PH BALANCES SLIP PAGES OR GENERAL NOTE ASSISTANCES...",
                                 color = if (isListening) TechAlarmRed else palette.textMuted,
-                                fontSize = 13.sp,
-                                fontFamily = FontTelemetryMono,
-                                lineHeight = 20.sp
+                                fontSize = 13.sp, lineHeight = 20.sp
                             )
                         }
                         innerTextField()
@@ -313,7 +347,7 @@ fun FlotationClarifierScreen(
                                             onStatusChange = { currentVoiceStatusText = it },
                                             onListeningStateChange = { isListening = it },
                                             onTranslatingStateChange = { isTranslating = it },
-                                            onResultReceived = { state = state.copy(remarks = it, isSubmitted = false) }
+                                            onResultReceived = { manualState = manualState.copy(remarks = it, isSubmitted = false) }
                                         )
                                     } else {
                                         (context as? android.app.Activity)?.requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 101)
@@ -331,26 +365,26 @@ fun FlotationClarifierScreen(
 
     val SignatureContent = @Composable { modifier: Modifier ->
         ClarifierFormSectionCard(title = "OPERATOR DIGITAL SIGNATURE VALIDATION", icon = Icons.Rounded.Draw, palette = palette, isDark = isDarkThemeOverride, modifier = modifier) {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("DRAW RECOGNIZED SIGNATURE ON CANVAS:", color = palette.textPrimary, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
-                    Text(text = "RESET TRACE", color = TechAlarmRed, fontSize = 10.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 6.dp, vertical = 2.dp))
+                    Text("DRAW RECOGNIZED SIGNATURE ON CANVAS:", color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+                    Text(text = "RESET TRACE", color = TechAlarmRed, fontSize = 10.sp, fontWeight = FontWeight.Black, modifier = Modifier.clip(RoundedCornerShape(4.dp)).clickable { signaturePoints.clear() }.padding(horizontal = 6.dp, vertical = 2.dp))
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f) // Ensures canvas expands into available space
+                        .weight(1f)
                         .shadow(elevation = 6.dp, shape = RoundedCornerShape(8.dp))
                         .background(palette.glassFill, RoundedCornerShape(8.dp))
                         .border(1.dp, palette.glassBorder, RoundedCornerShape(8.dp))
                 ) {
                     if (signaturePoints.isEmpty()) {
-                        Text(text = "TOUCH SCREEN OR STYLUS INTERACTION INTERFACE ACTIVE...", color = palette.textMuted.copy(alpha = 0.5f), fontSize = 11.sp, fontFamily = FontTelemetryMono, modifier = Modifier.align(Alignment.Center), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(text = "TOUCH SCREEN OR STYLUS INTERACTION INTERFACE ACTIVE...", color = palette.textMuted.copy(alpha = 0.5f), fontSize = 11.sp, modifier = Modifier.align(Alignment.Center), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     SignatureCaptureCanvas(
                         points = signaturePoints,
-                        strokeColor = palette.textPrimary, // Adjusted dynamically based on theme palette
+                        strokeColor = palette.textPrimary,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -369,32 +403,31 @@ fun FlotationClarifierScreen(
         val statusBadge = @Composable {
             Box(
                 modifier = Modifier
-                    .height(38.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .height(38.dp).clip(RoundedCornerShape(6.dp))
                     .background(if (signaturePoints.isNotEmpty()) TechAccentGreen.copy(alpha = 0.15f) else TechAlarmRed.copy(alpha = 0.08f))
                     .border(1.dp, if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, RoundedCornerShape(6.dp))
                     .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = if (signaturePoints.isNotEmpty()) "ESIGN LOCK DETECTED ✔" else "ESIGN SIGNATURE TRACE MISSING ❌", color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Black)
+                Text(text = if (signaturePoints.isNotEmpty()) "ESIGN LOCK DETECTED ✔" else "ESIGN SIGNATURE TRACE MISSING ❌", color = if (signaturePoints.isNotEmpty()) TechAccentGreen else TechAlarmRed, fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
         }
 
         val actionButtons = @Composable {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.height(36.dp).clickable { state = FlotationClarifierState(); signaturePoints.clear() }.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
-                    Text("RESET LOCK", color = palette.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono)
+                Box(modifier = Modifier.height(36.dp).clickable { manualState = FlotationClarifierManualState(); signaturePoints.clear() }.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+                    Text("RESET LOCK", color = palette.textMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Box(
                     modifier = Modifier
                         .height(40.dp)
                         .then(if (isPortrait) Modifier.fillMaxWidth() else Modifier.width(220.dp))
                         .clip(RoundedCornerShape(50))
-                        .background(Brush.linearGradient(colors = if (state.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
-                        .clickable { if (signaturePoints.isNotEmpty()) { state = state.copy(isSubmitted = true); onNavigationCallback() } },
+                        .background(Brush.linearGradient(colors = if (manualState.isSubmitted) listOf(TechAccentGreen, TechAccentGreen.copy(alpha = 0.8f)) else listOf(TechAccentBlue, TechAccentBlue.copy(alpha = 0.8f))))
+                        .clickable { if (signaturePoints.isNotEmpty()) { manualState = manualState.copy(isSubmitted = true); onNavigationCallback() } },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("COMMIT JOURNAL LOG", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black, fontFamily = FontTelemetryMono)
+                    Text("COMMIT JOURNAL LOG", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Black)
                 }
             }
         }
@@ -430,6 +463,8 @@ fun FlotationClarifierScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    LivePLCContent(Modifier.fillMaxWidth())
+                    EquipmentContent(Modifier.fillMaxWidth())
                     TimelinesContent(Modifier.fillMaxWidth())
                     ChemistryContent(Modifier.fillMaxWidth())
                     RemarksContent(Modifier.fillMaxWidth().height(180.dp))
@@ -440,7 +475,7 @@ fun FlotationClarifierScreen(
                 FooterContent()
             }
         } else {
-            // 💻 LANDSCAPE LAYOUT
+            // 💻 LANDSCAPE LAYOUT - 3 Columns to fit Live Data
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -451,7 +486,16 @@ fun FlotationClarifierScreen(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // LEFT SIDE
+                    // LEFT COLUMN: Live PLC Data & Equipment
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        LivePLCContent(Modifier)
+                        EquipmentContent(Modifier)
+                    }
+
+                    // CENTER COLUMN: Scheduling & Chemistry Data (Manual)
                     Column(
                         modifier = Modifier.weight(1.1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -460,18 +504,56 @@ fun FlotationClarifierScreen(
                         ChemistryContent(Modifier)
                     }
 
-                    // RIGHT SIDE
+                    // RIGHT COLUMN: Audio & Signature
                     Column(
                         modifier = Modifier.weight(1.1f),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         RemarksContent(Modifier.weight(1f))
-                        SignatureContent(Modifier.height(180.dp))
+                        SignatureContent(Modifier.height(200.dp))
                     }
                 }
 
                 FooterContent()
             }
+        }
+    }
+}
+
+@Composable
+private fun HardwareStateBadge(
+    title: String,
+    isRunning: Boolean,
+    palette: ClarifierMorphicPalette
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(38.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .background(palette.inputContainer)
+            .border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(6.dp))
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = title, color = palette.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).padding(end = 8.dp))
+
+        Box(
+            modifier = Modifier
+                .height(24.dp)
+                .width(80.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (isRunning) TechAccentGreen.copy(alpha = 0.15f) else TechAlarmRed.copy(alpha = 0.1f))
+                .border(1.dp, if (isRunning) TechAccentGreen else TechAlarmRed.copy(alpha = 0.5f), RoundedCornerShape(4.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = if (isRunning) "RUNNING" else "STANDBY",
+                color = if (isRunning) TechAccentGreen else TechAlarmRed,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black
+            )
         }
     }
 }
@@ -512,7 +594,7 @@ private fun ClarifierFormSectionCard(title: String, icon: ImageVector, palette: 
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(icon, contentDescription = null, tint = TechAccentBlue, modifier = Modifier.size(16.dp))
-            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontTelemetryMono, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = title, color = palette.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Spacer(modifier = Modifier.height(8.dp))
         content()
@@ -520,22 +602,23 @@ private fun ClarifierFormSectionCard(title: String, icon: ImageVector, palette: 
 }
 
 @Composable
-private fun ClarifierLogInputField(label: String, value: String, palette: ClarifierMorphicPalette, modifier: Modifier = Modifier, onValueChange: (String) -> Unit) {
+private fun ClarifierLogInputField(label: String, value: String, palette: ClarifierMorphicPalette, modifier: Modifier = Modifier, isReadOnly: Boolean = false, onValueChange: (String) -> Unit) {
     Box(
         modifier = modifier
             .height(48.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(palette.inputContainer)
+            .background(if (isReadOnly) palette.inputContainer.copy(alpha = 0.4f) else palette.inputContainer)
             .border(1.dp, palette.inputBorderUnfocused, RoundedCornerShape(6.dp))
             .padding(horizontal = 10.dp, vertical = 4.dp)
     ) {
         Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
-            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontFamily = FontTelemetryMono, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = label, color = palette.textMuted, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(1.dp))
             BasicTextField(
                 value = value, onValueChange = onValueChange,
-                textStyle = TextStyle(fontFamily = FontTelemetryMono, color = palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black),
+                textStyle = TextStyle(color = if (isReadOnly) TechAccentGreen else palette.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Black),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true,
+                readOnly = isReadOnly,
                 cursorBrush = SolidColor(palette.textPrimary), modifier = Modifier.fillMaxWidth()
             )
         }

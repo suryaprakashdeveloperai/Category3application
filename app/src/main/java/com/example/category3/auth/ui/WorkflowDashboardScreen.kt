@@ -595,9 +595,9 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
 
         val op = opanTimers.getOrNull(r); val pm = pmTimers.getOrNull(r)
 
-        // Check constraints: completed if 24 mins or more
-        val isOpCompleted = (op?.elapsedMinutes ?: 0.0) >= 24.0
-        val isPmCompleted = (pm?.elapsedMinutes ?: 0.0) >= 24.0
+        // Check constraints: completed if 30 mins or more
+        val isOpCompleted = (op?.elapsedMinutes ?: 0.0) >= 30.0
+        val isPmCompleted = (pm?.elapsedMinutes ?: 0.0) >= 30.0
 
         // Calculate Batch Number
         if(isOpCompleted && isPmCompleted) completedBatchesCount++
@@ -622,7 +622,7 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
 
     // Total Box Showcasing Output Today
     val totalBoxY = lastRowY + cellH + spacing
-    val totalBoxH = (26.dp * scaleDown).toPx()
+    val totalBoxH = (38.dp * scaleDown).toPx()
 
     drawRoundRect(
         color = stage.color.copy(alpha = 0.15f),
@@ -633,17 +633,31 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
 
     val totalBoxTextPaint = Paint().apply {
         color = theme.textMain.toArgb()
+        textSize = (10.sp * scaleDown).toPx()
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+
+    val totalBoxValPaint = Paint().apply {
+        color = stage.color.toArgb()
         textSize = (11.sp * scaleDown).toPx()
         textAlign = Paint.Align.CENTER
         isFakeBoldText = true
     }
 
-    // Displays total output today inside the spanning box
+    // Displays batches and total output today in new lines inside the spanning box
     drawContext.canvas.nativeCanvas.drawText(
-        "TOTAL OUTPUT TODAY: 1,450 TCD",
+        "BATCHES DONE: $completedBatchesCount",
         gridStartX + totalGridW / 2,
-        totalBoxY + totalBoxH / 2 - (totalBoxTextPaint.ascent() + totalBoxTextPaint.descent()) / 2,
+        totalBoxY + totalBoxH * 0.35f - (totalBoxTextPaint.ascent() + totalBoxTextPaint.descent()) / 2,
         totalBoxTextPaint
+    )
+
+    drawContext.canvas.nativeCanvas.drawText(
+        "TOTAL: 1,450 TCD",
+        gridStartX + totalGridW / 2,
+        totalBoxY + totalBoxH * 0.75f - (totalBoxValPaint.ascent() + totalBoxValPaint.descent()) / 2,
+        totalBoxValPaint
     )
 }
 

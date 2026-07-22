@@ -69,7 +69,7 @@ class MillManualEntryViewModel : ViewModel() {
 
     companion object {
         private const val TAG = "MILL_MANUAL_SSE"
-        private const val SSE_URL = "https://warner-regional-gay-donors.trycloudflare.com/stream"
+        private const val SSE_URL = "https://seed-satellite-advantage-str.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         fun provideFactory(): ViewModelProvider.Factory = object : ViewModelProvider.Factory {

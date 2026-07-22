@@ -12,7 +12,6 @@ import android.print.PrintAttributes
 import android.print.PrintManager
 import android.provider.MediaStore
 import android.util.Base64
-import android.view.MotionEvent
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -75,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -87,7 +87,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -186,16 +186,28 @@ fun printDcsLogReport(
     val signatureSvg = if (signaturePoints.isEmpty()) {
         "<p style='color: #EF4444; font-weight: bold;'>SIGNATURE MISSING / UNVERIFIED</p>"
     } else {
+        var maxX = 0f
+        var maxY = 0f
         val pathStr = buildString {
             var first = true
             for (p in signaturePoints) {
                 if (p == Offset.Unspecified) { first = true } else {
+                    // Track bounds to dynamically scale the SVG printout ViewBox properly (Fixing the cut-off sign)
+                    if (p.x > maxX) maxX = p.x
+                    if (p.y > maxY) maxY = p.y
+
                     if (first) { append("M ${p.x} ${p.y} "); first = false }
                     else { append("L ${p.x} ${p.y} ") }
                 }
             }
         }
-        "<svg width='100%' height='150' style='border:1px solid #E2E8F0; background:#F8FAFC; border-radius: 6px;'><path d='$pathStr' fill='transparent' stroke='#0F172A' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+
+        // Calculate scaling variables so that high density device pixels scale flawlessly to physical paper
+        val vBoxW = maxOf(maxX + 20f, 100f).toInt()
+        val vBoxH = maxOf(maxY + 20f, 50f).toInt()
+        val strokeW = maxOf(vBoxH / 40f, 2.5f)
+
+        "<svg width='100%' height='150' viewBox='0 0 $vBoxW $vBoxH' preserveAspectRatio='xMidYMid meet' style='border:1px solid #E2E8F0; background:#F8FAFC; border-radius: 6px;'><path d='$pathStr' fill='transparent' stroke='#0F172A' stroke-width='$strokeW' stroke-linecap='round' stroke-linejoin='round'/></svg>"
     }
 
     val htmlBuilder = """
@@ -606,13 +618,26 @@ fun DcsScreen(
                         Text(text = "TOUCH AUTHENTICATOR MATRIX ON...", color = palette.textMuted.copy(alpha = 0.4f), fontSize = 11.sp, modifier = Modifier.align(Alignment.Center))
                     }
                     Canvas(
-                        modifier = Modifier.fillMaxSize().pointerInteropFilter { event ->
-                            when (event.action) {
-                                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> { signaturePoints.add(Offset(event.x, event.y)); true }
-                                MotionEvent.ACTION_UP -> { signaturePoints.add(Offset.Unspecified); true }
-                                else -> false
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clipToBounds()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull() ?: continue
+
+                                        if (change.pressed) {
+                                            signaturePoints.add(change.position)
+                                            change.consume()
+                                        } else {
+                                            if (signaturePoints.isNotEmpty() && signaturePoints.last() != Offset.Unspecified) {
+                                                signaturePoints.add(Offset.Unspecified)
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                        }
                     ) {
                         if (signaturePoints.size > 1) {
                             val path = Path()

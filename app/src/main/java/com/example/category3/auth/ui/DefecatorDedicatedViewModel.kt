@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +19,9 @@ import okhttp3.sse.EventSourceListener
 import okhttp3.sse.EventSources
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
@@ -117,7 +119,7 @@ class DefecatorDedicatedViewModel(
 
     companion object {
         private const val TAG = "DEFECATOR_SSE"
-        private const val SSE_URL = "https://dawn-officers-gas-growth.trycloudflare.com/stream"
+        private const val SSE_URL = "https://seed-satellite-advantage-str.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         private const val PH_TARGET = 7.2f
@@ -138,6 +140,9 @@ class DefecatorDedicatedViewModel(
     private var eventSource: EventSource? = null
     private var reconnectJob: Job? = null
     private val sseClient = buildInsecureClient()
+
+    // CACHED: Avoid recreating DateFormatter on every single network tick
+    private val batchDateFormatter = SimpleDateFormat("ddMM", Locale.US)
 
     private val seedDashboard = DefecatorDashboardState(
         userName = userName, userRole = userRole, batchId = "BATCH-000", startTime = "—",
@@ -165,10 +170,26 @@ class DefecatorDedicatedViewModel(
 
         val request = Request.Builder().url(SSE_URL).header("Accept", "text/event-stream").header("Cache-Control", "no-cache").build()
         eventSource = EventSources.createFactory(sseClient).newEventSource(request, object : EventSourceListener() {
-            override fun onOpen(source: EventSource, response: Response) { _state.update { it.copy(connectionStatus = "CONNECTED") }; Log.d(TAG, "SSE connected") }
-            override fun onEvent(source: EventSource, id: String?, type: String?, data: String) { viewModelScope.launch(Dispatchers.Default) { parseAndUpdate(data) } }
-            override fun onClosed(source: EventSource) { _state.update { it.copy(connectionStatus = "DISCONNECTED") }; scheduleReconnect() }
-            override fun onFailure(source: EventSource, t: Throwable?, response: Response?) { Log.e(TAG, "SSE failure: ${t?.message}"); _state.update { it.copy(connectionStatus = "RECONNECTING") }; scheduleReconnect() }
+            override fun onOpen(source: EventSource, response: Response) {
+                _state.update { it.copy(connectionStatus = "CONNECTED") }
+                Log.d(TAG, "SSE connected")
+            }
+
+            override fun onEvent(source: EventSource, id: String?, type: String?, data: String) {
+                // FIXED: Removed coroutine launch to prevent out-of-order execution (Race Condition)
+                parseAndUpdate(data)
+            }
+
+            override fun onClosed(source: EventSource) {
+                _state.update { it.copy(connectionStatus = "DISCONNECTED") }
+                scheduleReconnect()
+            }
+
+            override fun onFailure(source: EventSource, t: Throwable?, response: Response?) {
+                Log.e(TAG, "SSE failure: ${t?.message}")
+                _state.update { it.copy(connectionStatus = "RECONNECTING") }
+                scheduleReconnect()
+            }
         })
     }
 
@@ -241,16 +262,25 @@ class DefecatorDedicatedViewModel(
                 DefecatorKpiData("Steam Valve", "%.1f %%".format(steamValve), "", steamValve in 10f..90f, trendHistory(steamValve))
             )
 
-            val alerts = buildList {
-                if (phFault) add("⚠ Defecator pH out of spec: %.2f".format(pH))
-                if (djPumpFault) add("🔴 DJ Active Pump near-zero: %.3f A".format(djActiveA))
-                if (heater3Fault) add("⚠ Heater-3 deviation: Δ%.1f°C (SP %.1f / PV %.1f)".format(heater3Dev, h3Sp, h3Pv))
+            // OPTIMIZED: Avoid object creation loop if systems are healthy
+            val alerts = if (!phFault && !djPumpFault && !heater3Fault) {
+                emptyList()
+            } else {
+                buildList {
+                    if (phFault) add("⚠ Defecator pH out of spec: %.2f".format(pH))
+                    if (djPumpFault) add("🔴 DJ Active Pump near-zero: %.3f A".format(djActiveA))
+                    if (heater3Fault) add("⚠ Heater-3 deviation: Δ%.1f°C (SP %.1f / PV %.1f)".format(heater3Dev, h3Sp, h3Pv))
+                }
             }
+
+            // OPTIMIZED: Use cached DateFormatter
+            val timestampMs = ((payload.timestamp ?: 0.0) * 1_000.0).toLong()
+            val formattedDate = batchDateFormatter.format(Date(timestampMs))
 
             _state.update {
                 it.copy(
                     dashboard = it.dashboard.copy(
-                        batchId = "BATCH-${java.text.SimpleDateFormat("ddMM", java.util.Locale.US).format(java.util.Date(((payload.timestamp ?: 0.0) * 1_000.0).toLong()))}",
+                        batchId = "BATCH-$formattedDate",
                         sectionStatus = if (alerts.isNotEmpty()) DefecatorEquipStatus.FAULT else DefecatorEquipStatus.RUNNING,
                         units = units, kpis = kpis, chart = DefecatorChartData(cjFlowLhr, CJ_FLOW_TARGET_LHR, CJ_FLOW_DESIGN_LHR), processStability = stability
                     ),
@@ -264,5 +294,16 @@ class DefecatorDedicatedViewModel(
         val trustAll = arrayOf<TrustManager>(object : X509TrustManager { override fun checkClientTrusted(c: Array<out X509Certificate>?, a: String?) {}; override fun checkServerTrusted(c: Array<out X509Certificate>?, a: String?) {}; override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf() })
         val ssl = SSLContext.getInstance("TLS").apply { init(null, trustAll, SecureRandom()) }
         return OkHttpClient.Builder().sslSocketFactory(ssl.socketFactory, trustAll[0] as X509TrustManager).hostnameVerifier { _, _ -> true }.readTimeout(0, TimeUnit.MILLISECONDS).connectTimeout(15, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
+    }
+
+    // FIXED: Properly clean up SSE connection when user leaves the screen
+    override fun onCleared() {
+        super.onCleared()
+        reconnectJob?.cancel()
+        eventSource?.cancel()
+
+        // Shut down background thread immediately so it doesn't leak memory
+        sseClient.dispatcher.executorService.shutdown()
+        Log.d(TAG, "ViewModel cleared, SSE connection completely closed.")
     }
 }

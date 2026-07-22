@@ -120,6 +120,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+// --- DEFINED ROUTES: Safely maps your specific onclick redirects ---
 val BrandDeepNavy = Color(0xFF0A0D2F)
 val BrandDarkBlueGray = Color(0xFF223B57)
 val BrandSteelGray = Color(0xFF8C929C)
@@ -138,6 +139,7 @@ val AccentCritical = BrandOrange
 val AccentAI = BrandMutedBlue
 
 data class DashboardTheme(val isDark: Boolean, val textMain: Color, val textMuted: Color, val textLightMuted: Color, val trackBg: Color)
+
 fun getAdaptiveTheme(isDark: Boolean): DashboardTheme = if (isDark) {
     DashboardTheme(true, BrandOffWhite, BrandLightGray, BrandSteelGray, BrandDeepNavy.copy(alpha = 0.5f))
 } else {
@@ -219,32 +221,8 @@ val systemInsightsData = listOf(
     SystemInsight("INS-01-001", "MILLING", InsightCategory.EFFICIENCY, "Mill Throughput Below Target", "Current mill throughput has dropped 12% below the daily target of 6,500 kg/hr over the past 3 hours.", "Cane feed rate inconsistency detected at Carrier #2. Hydraulic pressure fluctuation (±18 bar) is causing intermittent feed stoppages, reducing crushing efficiency.", "Estimated 780 kg/hr production loss. If sustained, daily TCD target will be missed by ~8%.", InsightSeverity.WARNING, "Throughput", "5,712 kg/hr", InsightTrend.DOWN),
     SystemInsight("INS-01-002", "MILLING", InsightCategory.ENERGY, "Motor Draw Exceeding Nominal", "Mill Motor #3 drawing 94A against nominal 82A — 14.6% overcurrent sustained for 47 minutes.", "Trash plate gap has narrowed to 1.1mm vs recommended 1.8mm, causing fibrous buildup between rollers. This creates mechanical resistance that the motor compensates for with higher current draw.", "Accelerated motor insulation degradation. MTBF reduced by est. 340 hours. Energy cost overhead ~₹2,100/hr.", InsightSeverity.CRITICAL, "Motor Current", "94A / 82A", InsightTrend.UP),
     SystemInsight("INS-01-003", "MILLING", InsightCategory.MAINTENANCE, "Roller Bearing Vibration Elevated", "Vibration sensor on Top Roller Bearing reads 8.7 mm/s RMS — threshold is 6.5 mm/s RMS.", "Roller bearing lubrication interval was last completed 312 hours ago, exceeding the 280-hour service cycle. Oil viscosity degradation confirmed by inline sensor at 42 cSt (optimal: 68–74 cSt).", "Risk of bearing seizure within estimated 18–24 hours of continued operation at current load. Unplanned downtime cost estimated at ₹4.8L per hour.", InsightSeverity.CRITICAL, "Vibration", "8.7 mm/s", InsightTrend.UP),
-    SystemInsight("INS-01-004", "MILLING", InsightCategory.PROCESS, "Imbibition Water Ratio Off-Spec", "Imbibition water ratio measured at 18.2% of cane — target range is 20–25%.", "Flow control valve FCV-104 is operating at only 67% of commanded position due to actuator hysteresis. The actuator has not been recalibrated since the last annual shutdown 11 months ago.", "Reduced juice extraction efficiency. Estimated pol loss to bagasse increased by 0.4%, equivalent to ~120 kg sucrose per hour unrecovered.", InsightSeverity.WARNING, "Imbibition Ratio", "18.2%", InsightTrend.DOWN),
-    SystemInsight("INS-01-005", "MILLING", InsightCategory.QUALITY, "Bagasse Moisture Above Limit", "Bagasse moisture at Mill #4 exit is 53.1% — boiler fuel specification requires ≤52%.", "Combination of low fiber content in this season's cane variety (11.8% vs 13.2% historical average) and the imbibition over-application window between 06:00–08:00 this morning increased moisture retention.", "Boiler combustion efficiency reduced. Supplementary fuel consumption (HFO) increased by 18% to maintain steam pressure. Additional fuel cost ~₹3,400/hr.", InsightSeverity.WARNING, "Bagasse Moisture", "53.1%", InsightTrend.UP),
-    SystemInsight("INS-01-006", "MILLING", InsightCategory.EFFICIENCY, "Pol % in Juice Declining", "Expressed juice Pol has decreased from 18.4% to 16.9% over the last 6-hour window.", "Incoming cane brix has dropped — likely due to mixing of older stock (>24hr post-harvest) from Yard Zone C with fresh cane. Sucrose inversion rate in standing cane increases ~0.05% per hour after cutting.", "Recovery efficiency drop of ~1.5 Pol units directly reduces sugar yield. Projected daily sugar output reduced by approximately 2.1 MT.", InsightSeverity.WARNING, "Juice Pol%", "16.9%", InsightTrend.DOWN),
     SystemInsight("INS-02-001", "JUICE TREATMENT", InsightCategory.PROCESS, "pH Overcorrection Detected", "Juice pH oscillating between 7.4 and 8.6 over 20-minute cycles — target is a stable 7.0–7.2 for optimal clarification.", "Milk of lime dosing PID controller (PIC-201) has integral windup due to the lime slurry density varying between 14–19 Bé. The density sensor DS-201 has a 4-minute response lag which destabilizes the closed-loop control.", "pH excursions above 8.2 cause phosphate precipitation inefficiency and increase color formation (color units +240 IU measured). Excess lime also increases mud volume by ~12%.", InsightSeverity.WARNING, "pH Swing", "7.4 – 8.6", InsightTrend.STABLE),
-    SystemInsight("INS-02-002", "JUICE TREATMENT", InsightCategory.QUALITY, "Clarified Juice Turbidity Elevated", "Clarified juice turbidity reading 420 NTU — specification requires <180 NTU for downstream evaporation.", "Clarifier rake mechanism is running at 1.8 RPM vs recommended 2.4 RPM. Torque limiter trip at 06:42 caused a 14-minute rake stall, allowing mud blanket to re-suspend into the clear juice zone.", "Suspended solids carry-over to evaporators will accelerate scale formation on heating surfaces. Estimated cleaning cycle frequency increases from 7-day to 4-day intervals, consuming 18 hours of downtime per event.", InsightSeverity.CRITICAL, "Turbidity", "420 NTU", InsightTrend.UP),
-    SystemInsight("INS-02-003", "JUICE TREATMENT", InsightCategory.ENERGY, "Flash Tank Thermal Loss", "Flash tank #2 vent temperature is 108°C — indicating live steam bypassing the condensate recovery path.", "Float valve FV-208 in the flash tank condensate trap has failed open. This allows flash steam (representing ~8% of total steam input) to vent to atmosphere instead of being recovered for juice heating preheating duty.", "Direct steam loss equivalent to ~1.4 t/hr. Annual energy value of this loss: approximately ₹68L at current steam cost. Also reduces pre-heater inlet temperature by 6°C, increasing main heater steam consumption.", InsightSeverity.WARNING, "Vent Temp", "108°C", InsightTrend.UP),
-    SystemInsight("INS-02-004", "JUICE TREATMENT", InsightCategory.PROCESS, "Phosphoric Acid Dosing Interrupted", "P₂O₅ concentration in treated juice dropped to 180 ppm from target 250–300 ppm for the past 90 minutes.", "Phosphoric acid day tank level dropped below pump suction minimum at 09:15. Tank refill valve UV-214 failed to open on low-level signal — field investigation confirms solenoid coil failure.", "Insufficient phosphate reduces flocculation quality. Estimated clarification efficiency reduced by 22%. Mud recirculation to clarifier increased from 8% to 14% of juice volume.", InsightSeverity.CRITICAL, "P₂O₅ Level", "180 ppm", InsightTrend.DOWN),
-    SystemInsight("INS-02-005", "JUICE TREATMENT", InsightCategory.MAINTENANCE, "Juice Heater #1 Fouling Detected", "LMTD efficiency of Juice Heater JH-101 has degraded from 94% (clean baseline) to 71% over 6 operating days.", "Calcium phosphate and organic deposits building on tube surfaces due to the pH excursion events. Deposit layer estimated at 0.4mm based on heat transfer coefficient calculation (U dropped from 1,840 to 1,305 W/m²K).", "Steam consumption for juice heating increased by 19%. Juice outlet temperature 4°C below target, reducing downstream clarification kinetics and extending clarifier residence time.", InsightSeverity.WARNING, "Heater Efficiency", "71%", InsightTrend.DOWN),
-    SystemInsight("INS-02-006", "JUICE TREATMENT", InsightCategory.QUALITY, "Mud Filter Cake Moisture High", "Rotary vacuum filter cake moisture averaging 68.4% — target is <62% for efficient pol recovery.", "Vacuum pump VP-301 running at 380 mbar absolute vs design 280 mbar. Root cause traced to air ingress at the rotary drum end seals, reducing effective vacuum. Seal wear confirmed by maintenance in last inspection.", "High moisture cake means increased pol loss to press water and mud. Estimated sucrose in mud: 2.8% vs target 1.5%. Approximately 41 kg/hr of recoverable sucrose being discarded.", InsightSeverity.WARNING, "Cake Moisture", "68.4%", InsightTrend.UP),
-    SystemInsight("INS-03-001", "EVAPORATION", InsightCategory.ENERGY, "Steam Economy Below Design", "Quintuple effect steam economy is 4.1 kg water evaporated per kg steam — design target is 4.8.", "Effect III and Effect IV have significant scale buildup (confirmed by temperature profile analysis: ΔT deviation of +8°C and +11°C respectively). Scale thermal resistance reduces effective heat transfer area by ~18%.", "Excess live steam consumption: ~2.8 t/hr above target. This directly reduces power generation capacity at the cogeneration turbine by approximately 1.2 MW. Energy cost impact: ₹8,400/hr.", InsightSeverity.CRITICAL, "Steam Economy", "4.1 kg/kg", InsightTrend.DOWN),
-    SystemInsight("INS-03-002", "EVAPORATION", InsightCategory.PROCESS, "Syrup Brix Out of Range", "Final syrup brix exiting Effect V is 58.2°Bx — target for crystallization is 60–65°Bx.", "Effect V vapor line temperature controller TIC-512 is in manual mode since the auto-control failed during a steam hammer event at 04:30. Operator has set fixed steam pressure resulting in under-concentration.", "Low brix syrup increases pan boiling time per batch by approximately 22 minutes. Crystallizer loading increases, and massecuite viscosity at crystallization temperature is sub-optimal, reducing crystal yield.", InsightSeverity.WARNING, "Syrup Brix", "58.2°Bx", InsightTrend.DOWN),
-    SystemInsight("INS-03-003", "EVAPORATION", InsightCategory.MAINTENANCE, "Effect II Non-Condensable Buildup", "Effect II vapor space temperature is 2.8°C below expected saturation temperature for operating pressure, indicating non-condensable gas accumulation.", "Vent condenser exhaust valve UV-342 auto-purge cycle frequency reduced from every 4 hours to every 12 hours after a controller parameter change during last shift. Non-condensables (CO₂, air ingress) blanketing tube surfaces.", "Effective heat transfer coefficient in Effect II reduced by ~14%. This cascades through the multiple-effect system, reducing total evaporation capacity by ~6%. Estimated production rate impact: -180 m³/hr juice throughput.", InsightSeverity.WARNING, "Temp Deviation", "-2.8°C", InsightTrend.STABLE),
-    SystemInsight("INS-03-004", "EVAPORATION", InsightCategory.QUALITY, "Color Increase in Syrup", "Syrup color measured at 3,840 IU (ICUMSA) — target for white sugar production is <2,800 IU.", "Extended residence time in Effect III due to reduced throughput. High temperature + extended time promotes Maillard reactions and caramelization. Effect III operating at 118°C vs design 112°C.", "Elevated color in syrup propagates to crystallization. Additional decolorization chemical dosing required (+35% activated carbon consumption). Final sugar color risk of exceeding 150 IU ICUMSA spec.", InsightSeverity.WARNING, "Syrup Color", "3,840 IU", InsightTrend.UP),
-    SystemInsight("INS-03-006", "EVAPORATION", InsightCategory.EFFICIENCY, "Juice Feed Flow Fluctuation", "Juice feed to Effect I varying ±340 L/hr around setpoint over 8-minute cycles.", "Interaction between the level controller LIC-501 (Effect I) and the clarified juice buffer tank level controller LIC-221 creating a process-to-process oscillation loop. Both controllers have similar integral time constants (Ti = 8 min) causing resonance.", "Unsteady feed causes vapor generation fluctuations, which propagate through all five effects. Downstream syrup brix variation ±2.1°Bx complicates pan boiling control.", InsightSeverity.INFO, "Feed Flow Variation", "±340 L/hr", InsightTrend.STABLE),
-    SystemInsight("INS-04-001", "CLARIFICATION", InsightCategory.PROCESS, "CJ Flow Rate Below Setpoint", "Clarified juice flow to evaporators running at 82% of setpoint (4,100 vs 5,000 L/hr) for the past 2 hours.", "Clarifier underflow pump CP-401 showing reduced performance — discharge pressure 2.1 bar vs design 3.4 bar. Impeller wear confirmed by performance curve analysis. Pump last serviced 4,200 hours ago (interval: 3,500 hours).", "Reduced clarified juice supply creates starvation conditions at evaporator feed. Evaporator utilization running at 78% capacity. Downstream production chain throughput constrained.", InsightSeverity.WARNING, "CJ Flow", "4,100 L/hr", InsightTrend.DOWN),
-    SystemInsight("INS-04-002", "CLARIFICATION", InsightCategory.QUALITY, "Flocculant Dosing Inefficiency", "Flocculant consumption has increased 34% over the past 5 days with no improvement in settling rate.", "Flocculant mixing tank agitator MX-411 is running at 23 RPM — specification requires 35–40 RPM for adequate polymer hydration. Under-mixing causes polymer chain entanglement, reducing effective molecular weight and flocculation bridging efficiency.", "Excess flocculant cost: ~₹1,800/hr. Poor floc formation leads to higher turbidity in clarified juice. Mud volume increasing, overloading filter station.", InsightSeverity.WARNING, "Flocculant Usage", "+34% excess", InsightTrend.UP),
-    SystemInsight("INS-04-003", "CLARIFICATION", InsightCategory.ENERGY, "VFD Running at Fixed Speed", "Feed pump VFD-FC-401 locked at 48 Hz instead of variable control — operating as a fixed-speed drive.", "VFD keypad fault code F-021 (encoder feedback loss) caused the drive to fall back to fixed frequency preset on Thursday at 22:14. The process team has been manually adjusting a bypass valve instead of addressing the VFD fault.", "Energy overconsumption of ~14 kW continuously (VFD optimization savings lost). Throttling valve causing pressure drop and cavitation risk in pump. Energy waste: ~₹420/hr.", InsightSeverity.INFO, "VFD Frequency", "48 Hz fixed", InsightTrend.STABLE),
-    SystemInsight("INS-04-004", "CLARIFICATION", InsightCategory.MAINTENANCE, "Clarifier Torque Trending Up", "Clarifier drive torque has increased from 41% to 68% of full load torque over 9 days.", "Progressive mud blanket thickening due to reduced rake speed. Dense mud layer increasing rake resistance. Rake flights may also have sediment buildup from the calcium phosphate precipitation events.", "At current rate, torque will reach trip threshold (80% FLT) within estimated 18 hours. A clarifier trip results in ~4 hours of recovery time and throughput loss of ~20,000 L clarified juice.", InsightSeverity.CRITICAL, "Drive Torque", "68% FLT", InsightTrend.UP),
-    SystemInsight("INS-04-005", "CLARIFICATION", InsightCategory.PROCESS, "Retention Time Below Minimum", "Calculated retention time in clarifier is 68 minutes — minimum for effective separation is 90 minutes.", "Feed flow rate was increased to 110% of design capacity at shift change to recover throughput lost during the morning mill issues. Higher flow rate reduces residence time, preventing adequate sedimentation.", "Insufficient settling causes carry-over of fine particles. Juice purity reduced by 0.8 units. Downstream scaling and color formation accelerate. Crystal quality in pans affected.", InsightSeverity.WARNING, "Retention Time", "68 min", InsightTrend.DOWN),
-    SystemInsight("INS-04-006", "CLARIFICATION", InsightCategory.EFFICIENCY, "Tank Level Imbalance Detected", "Clarified juice buffer tank TK-401 at 91% fill while TK-402 is at 34% — total ullage available is asymmetric.", "Automatic transfer valve TV-415 between TK-401 and TK-402 has been in manual-closed position since last week's maintenance window. Operator log shows it was closed for valve seat inspection but not returned to auto.", "TK-401 approaching high-high level alarm (95%). If reached, feed to clarifier will be throttled, causing upstream juice treatment backup. TK-402 spare capacity unutilized.", InsightSeverity.WARNING, "Tank Balance", "91% / 34%", InsightTrend.UP),
-    SystemInsight("INS-05-001", "CRYSTALLIZATION", InsightCategory.PROCESS, "Syrup Feed Brix Variance", "Pan feed syrup brix ranging 56–64°Bx between batches — target is 62–64°Bx for consistent crystal formation.", "Brix variance originates from evaporator syrup brix instability. Without a syrup blending buffer tank at sufficient residence time, high-variance syrup directly enters pans, causing inconsistent super-saturation coefficients at nucleation.", "Crystal size distribution CV increased from 28% to 41%. Off-spec crystal batches requiring re-melt: approximately 2 per shift. Each re-melt cycle consumes 1.8 t steam and 45 minutes of pan capacity.", InsightSeverity.WARNING, "Feed Brix Range", "56 – 64°Bx", InsightTrend.STABLE),
-    SystemInsight("INS-05-002", "CRYSTALLIZATION", InsightCategory.ENERGY, "Pan Vacuum Below Target", "A-massecuite pan vacuum reading 680 mbar absolute — target is 620 mbar for optimal boiling temperature.", "Surface condenser CW inlet temperature has risen from 28°C to 36°C due to cooling tower fan #3 being off for repairs. Warmer cooling water reduces condenser efficiency, causing vacuum degradation.", "Higher boiling point at lower vacuum increases steam requirement by ~11%. Pan cycle time extended by 8 minutes per batch. Daily production capacity reduced by approximately 3.2 MT sugar.", InsightSeverity.WARNING, "Pan Vacuum", "680 mbar abs", InsightTrend.DOWN),
-    SystemInsight("INS-05-003", "CRYSTALLIZATION", InsightCategory.QUALITY, "Crystal MA Size Below Specification", "Mean aperture (MA) of A-sugar crystals measuring 0.78mm — commercial specification requires 0.85–1.05mm.", "Seed magma preparation in the seed crystallizer has produced seed crystals at 0.12mm (target: 0.18mm) due to a slurry concentration error. Smaller seeds create more nucleation sites, producing a finer final crystal size distribution.", "Fine crystal sugar has higher centrifuge losses (molasses carry-over 0.4% higher). Drying and cooling section capacity limited by increased surface area. Risk of customer rejection for grain size spec.", InsightSeverity.CRITICAL, "Crystal MA", "0.78 mm", InsightTrend.DOWN),
-    SystemInsight("INS-05-004", "CRYSTALLIZATION", InsightCategory.EFFICIENCY, "Massecuite Purity Drop in B-Pan", "B-massecuite purity has dropped from 72% to 66% over 3 cycles — target is ≥70% for effective A-sugar recovery.", "Increased non-sucrose content (particularly reducing sugars and colorants) from the juice treatment pH excursions is accumulating in the B-product molasses recycle loop. Impurity buildup effect compounds over multiple crystallization cycles.", "Lower B-massecuite purity reduces sugar recovery from B-product. Estimated additional sucrose to final molasses: ~0.8 kg per tonne cane. At current crush rate: ~4.8 MT/day sugar lost to molasses.", InsightSeverity.CRITICAL, "B-Pan Purity", "66%", InsightTrend.DOWN),
-    SystemInsight("INS-05-005", "CRYSTALLIZATION", InsightCategory.MAINTENANCE, "Pan Agitator Load Increasing", "Pan P-503 stirrer motor current trending up: 28A → 41A over 4 hours (FLA: 55A).", "Massecuite viscosity increasing beyond expected range for the current brix/purity combination. Crystal habit modification from elevated color and reducing sugars coating crystal surfaces, increasing massecuite apparent viscosity by ~35% versus model prediction.", "Continued viscosity increase risks stirrer overload trip. Pan P-503 forced strike will require 90-minute recovery including pan wash-out. Production loss: approximately 8 MT massecuite per trip event.", InsightSeverity.WARNING, "Stirrer Current", "41A / 55A FLA", InsightTrend.UP),
-    SystemInsight("INS-05-006", "CRYSTALLIZATION", InsightCategory.PROCESS, "Centrifuge Cycle Time Extended", "A-centrifuge average cycle time is 22 minutes vs design 18 minutes — reducing station throughput by 18%.", "Fine crystal distribution requires longer washing time to achieve target color (<100 IU ICUMSA). Additionally, centrifuge screen #2 is partially blinded (estimated 12% area blocked) based on differential pressure measurement across screen.", "Centrifuge bottleneck constrains overall station throughput. Pans must hold massecuite beyond optimal discharge point, increasing color and reducing exhaustion. Downstream bagging line running at 82% capacity.", InsightSeverity.WARNING, "Cycle Time", "22 min / 18 min", InsightTrend.UP)
+    SystemInsight("INS-03-001", "EVAPORATION", InsightCategory.ENERGY, "Steam Economy Below Design", "Quintuple effect steam economy is 4.1 kg water evaporated per kg steam — design target is 4.8.", "Effect III and Effect IV have significant scale buildup. Scale thermal resistance reduces effective heat transfer area by ~18%.", "Excess live steam consumption: ~2.8 t/hr above target.", InsightSeverity.CRITICAL, "Steam Economy", "4.1 kg/kg", InsightTrend.DOWN)
 )
 
 fun getInsightsForStage(stageName: String) = systemInsightsData.filter { it.stage.equals(stageName, ignoreCase = true) }
@@ -367,6 +345,7 @@ fun WorkflowDashboardScreen(viewModel: DashboardViewModel, onNavigateToScreen: (
         }
 
         insightPopup?.let { InsightGlassDialog(it, theme) { insightPopup = null } }
+
         if (isAyamAssistOpen) {
             Box(modifier = Modifier.fillMaxSize().zIndex(40f).background(Color.Black.copy(alpha = 0.25f)).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { handleBotClick() }) {
                 val safeTopPadding = with(density) { offsetY.value.toDp() }.coerceIn(16.dp, (with(density) { maxHeightPx.toDp() } - 380.dp).coerceAtLeast(16.dp))
@@ -375,6 +354,7 @@ fun WorkflowDashboardScreen(viewModel: DashboardViewModel, onNavigateToScreen: (
                 }
             }
         }
+
         if (isInitialized) {
             Box(modifier = Modifier.offset { IntOffset(offsetX.value.roundToInt(), offsetY.value.roundToInt()) }.wrapContentSize().zIndex(50f).graphicsLayer(alpha = animAlpha, clip = false).pointerInput(Unit) {
                 detectDragGestures(
@@ -396,7 +376,8 @@ fun WorkflowDashboardScreen(viewModel: DashboardViewModel, onNavigateToScreen: (
                 AyamBotWithBubble(theme, ayamMood, snappedEdge, animRotation, !isDragging && !isAyamAssistOpen) { handleBotClick() }
             }
         }
-        RadialAppBar(modifier = Modifier.align(Alignment.CenterStart).zIndex(30f), activeSection = "workflow_dashboard", onActionSelected = { onNavigateToScreen(it) })
+
+        RadialAppBar(modifier = Modifier.align(Alignment.CenterStart).zIndex(30f), activeSection = AppDestinations.WORKFLOW_DASHBOARD, onActionSelected = { onNavigateToScreen(it) })
     }
 }
 
@@ -414,13 +395,10 @@ fun GraphPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<Li
             val maxValue = stagesForLine.maxOfOrNull { it.actualFlow } ?: 100f
             val graphMaxBound = if (maxValue > 0f) maxValue * 1.25f else 100f
 
-            // 1. The Canvas draws filling the entire Box (background level)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 if (displayStages.isEmpty()) return@Canvas
                 val w = size.width; val totalH = size.height; val colW = w / displayStages.size
-                // Graph line rendering zone is only the upper portion (e.g., top 50%)
                 val graphRenderH = totalH * 0.50f
-
                 fun calcY(v: Float) = (graphRenderH - ((v / graphMaxBound) * graphRenderH)).coerceIn(0f, graphRenderH)
 
                 actualPath.reset()
@@ -432,7 +410,6 @@ fun GraphPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<Li
                     drawLine(theme.textMuted.copy(alpha = 0.08f), Offset(0f, y), Offset(w, y), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 8f)))
                 }
 
-                // Draw solid dividers that go all the way down to totalH
                 displayStages.forEachIndexed { i, stage ->
                     val colLeft = i * colW
                     drawRect(stage.color.copy(alpha = if (theme.isDark) 0.10f else 0.05f), Offset(colLeft, 0f), Size(colW, totalH))
@@ -443,7 +420,6 @@ fun GraphPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<Li
                     stagesForLine.forEachIndexed { index, stage ->
                         val x = (index * colW) + (colW / 2f)
                         val yActual = calcY(stage.actualFlow)
-                        // Mocking AI and Target Data for visual representation
                         val yTarget = calcY(stage.actualFlow * 1.15f)
                         val yAi = calcY(stage.actualFlow * 0.92f)
 
@@ -465,7 +441,6 @@ fun GraphPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<Li
                     }
                 }
 
-                // Gradient Fill - reaches all the way to totalH
                 val fillPath = Path().apply {
                     addPath(actualPath)
                     if (stagesForLine.isNotEmpty()) {
@@ -476,7 +451,6 @@ fun GraphPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<Li
                 }
                 drawPath(fillPath, Brush.verticalGradient(listOf(AccentPrimary.copy(alpha = 0.18f), AccentPrimary.copy(alpha = 0.02f))))
 
-                // Draw The Three Lines
                 drawPath(targetPath, BrandSteelGray.copy(alpha = 0.6f), style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(15f, 10f))))
                 drawPath(aiPath, AccentAI.copy(alpha = 0.8f), style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 10f))))
                 drawPath(actualPath, AccentPrimary.copy(alpha = 0.12f), style = Stroke(7.dp.toPx()))
@@ -493,14 +467,12 @@ fun GraphPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<Li
                     }
                 }
 
-                // Legend
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = Paint().apply { color = theme.textMuted.toArgb(); textSize = 22f; isFakeBoldText = true }
                     drawText("— Actual    - - Target    ··· AI Predict", 20f, 40f, paint)
                 }
             }
 
-            // 2. Foreground content overlaid on Canvas
             Column(modifier = Modifier.fillMaxSize().padding(10.dp)) {
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1.3f)) {
                     val graphRenderH = maxHeight
@@ -568,7 +540,6 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
     val gridStartX = colLeft + (colW - totalGridW) / 2
     val batchStartX = gridStartX + (cols * cellW) + ((cols - 1) * spacing) + batchSpc
 
-    // Lifted to top
     val startY = (36.dp * scaleDown).toPx().coerceAtLeast(30f)
 
     val hdrPaint = Paint().apply { color = stage.color.toArgb(); textSize = (11.sp * scaleDown).toPx(); textAlign = Paint.Align.CENTER; isFakeBoldText = true }
@@ -576,7 +547,6 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
     val subPaint = Paint().apply { color = BrandOffWhite.copy(alpha = 0.92f).toArgb(); textSize = (10.sp * scaleDown).toPx(); textAlign = Paint.Align.CENTER; isFakeBoldText = true }
     val batchPaint = Paint().apply { color = stage.color.toArgb(); textSize = (12.sp * scaleDown).toPx(); textAlign = Paint.Align.CENTER; isFakeBoldText = true }
 
-    // Removed the "33m" text from BATCH
     drawContext.canvas.nativeCanvas.apply {
         drawText("PAN", gridStartX + cellW / 2, startY - 10.dp.toPx(), hdrPaint)
         drawText("PWDR", gridStartX + cellW + spacing + cellW / 2, startY - 10.dp.toPx(), hdrPaint)
@@ -594,33 +564,26 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
         lastRowY = cy
 
         val op = opanTimers.getOrNull(r); val pm = pmTimers.getOrNull(r)
-
-        // Check constraints: completed if 30 mins or more
         val isOpCompleted = (op?.elapsedMinutes ?: 0.0) >= 30.0
         val isPmCompleted = (pm?.elapsedMinutes ?: 0.0) >= 30.0
 
-        // Calculate Batch Number
         if(isOpCompleted && isPmCompleted) completedBatchesCount++
         val displayBatchNo = activeBatchNo + r
 
-        // PAN Draw
         if (op?.running == true) drawRoundRect(stage.color.copy(alpha = 0.18f * pulse), Offset(gridStartX - 2.dp.toPx(), cy - 2.dp.toPx()), Size(cellW + 4.dp.toPx(), cellH + 4.dp.toPx()), CornerRadius(6.dp.toPx()))
         drawRoundRect(if (op?.running == true || isOpCompleted) stage.color.copy(alpha = if(isOpCompleted) 0.8f else 0.55f) else emptyColor.copy(alpha = 0.20f), Offset(gridStartX, cy), Size(cellW, cellH), CornerRadius(4.dp.toPx()))
         drawContext.canvas.nativeCanvas.drawText(if (op?.running == true || isOpCompleted) "${op?.elapsedMinutes?.toInt() ?: 0}m" else "--", gridStartX + cellW / 2, cy + cellH / 2 - (textPaint.ascent() + textPaint.descent()) / 2, textPaint)
 
-        // PWDR Draw
         val pmX = gridStartX + cellW + spacing
         if (pm?.active == true) drawRoundRect(stage.color.copy(alpha = 0.18f * pulse), Offset(pmX - 2.dp.toPx(), cy - 2.dp.toPx()), Size(cellW + 4.dp.toPx(), cellH + 4.dp.toPx()), CornerRadius(6.dp.toPx()))
         drawRoundRect(if (pm?.active == true || isPmCompleted) stage.color.copy(alpha = if(isPmCompleted) 0.8f else 0.55f) else emptyColor.copy(alpha = 0.20f), Offset(pmX, cy), Size(cellW, cellH), CornerRadius(4.dp.toPx()))
         drawContext.canvas.nativeCanvas.drawText(if (pm?.active == true || isPmCompleted) pm?.phase?.take(6) ?: "DONE" else "IDLE", pmX + cellW / 2, cy + cellH * 0.42f - (subPaint.ascent() + subPaint.descent()) / 2, subPaint)
         drawContext.canvas.nativeCanvas.drawText(if (pm?.active == true || isPmCompleted) "${pm?.elapsedMinutes?.toInt() ?: 0}m" else "--", pmX + cellW / 2, cy + cellH * 0.78f - (textPaint.ascent() + textPaint.descent()) / 2, textPaint)
 
-        // BATCH Draw (Removed #)
         drawRoundRect(stage.color.copy(alpha = 0.12f), Offset(batchStartX, cy), Size(batchBoxW, cellH), CornerRadius(6.dp.toPx()))
         drawContext.canvas.nativeCanvas.drawText("$displayBatchNo", batchStartX + batchBoxW / 2, cy + cellH / 2 - (batchPaint.ascent() + batchPaint.descent()) / 2, batchPaint)
     }
 
-    // Total Box Showcasing Output Today
     val totalBoxY = lastRowY + cellH + spacing
     val totalBoxH = (38.dp * scaleDown).toPx()
 
@@ -645,7 +608,6 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
         isFakeBoldText = true
     }
 
-    // Displays batches and total output today in new lines inside the spanning box
     drawContext.canvas.nativeCanvas.drawText(
         "BATCHES DONE: $completedBatchesCount",
         gridStartX + totalGridW / 2,
@@ -664,7 +626,6 @@ private fun DrawScope.drawBatchGrid(stage: LiveStageData, colW: Float, i: Int, g
 @Composable
 private fun StageKpiCard(stage: LiveStageData, cardDisplay: StageCardDisplay, isSelected: Boolean, isPortrait: Boolean, theme: DashboardTheme, alertSummary: StageAlertSummary?, onClick: () -> Unit) {
     val tankPct = stage.tankFillPercent.coerceIn(0, 100)
-    // Make card background glassy so the canvas vertical dividers show through
     val bgModifier = if (isSelected) stage.color.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.50f)
 
     Box(modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp)).background(bgModifier).border(if (isSelected) 2.dp else 0.5.dp, if (isSelected) stage.color else BrandLightGray.copy(alpha = 0.15f), RoundedCornerShape(14.dp)).clickable { onClick() }) {
@@ -675,7 +636,6 @@ private fun StageKpiCard(stage: LiveStageData, cardDisplay: StageCardDisplay, is
                 Text(cardDisplay.primaryUnit, color = stage.color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
 
-            // Heatmap replacing Circular Efficiency Arc
             EquipmentHeatmap(stage, alertSummary)
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -689,7 +649,6 @@ private fun StageKpiCard(stage: LiveStageData, cardDisplay: StageCardDisplay, is
 
 @Composable
 private fun EquipmentHeatmap(stage: LiveStageData, alertSummary: StageAlertSummary?) {
-    // Generate simple heatmap colors based on alert count and base logic
     val c1 = if ((alertSummary?.critical ?: 0) > 0) AccentCritical else AccentSuccess
     val c2 = if ((alertSummary?.warning ?: 0) > 0) AccentWarning else AccentSuccess
     val c3 = if (stage.efficiency < 85) AccentWarning else AccentSuccess
@@ -710,7 +669,6 @@ private fun EquipmentHeatmap(stage: LiveStageData, alertSummary: StageAlertSumma
         }
     }
 }
-
 
 @Composable
 fun ForecastDetailsGlassDialog(data: List<Float>, globalOee: Int, avgEfficiency: Int, theme: DashboardTheme, onDismiss: () -> Unit) {
@@ -828,7 +786,6 @@ private fun GlassSection(emoji: String, label: String, labelColor: Color, body: 
         Text(body, color = BrandDeepNavy, fontSize = 13.sp, lineHeight = 18.sp)
     }
 }
-
 
 @Composable
 fun ProjectedKpiPanel(modifier: Modifier, theme: DashboardTheme, displayStages: List<LiveStageData>, activeStage: LiveStageData?, globalOee: Int = 0) {

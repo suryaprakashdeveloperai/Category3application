@@ -414,7 +414,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                                 }
 
                                 coroutineScope.launch {
-                                    delay(1200)
+                                    delay(1200.milliseconds)
                                     isLoading = false
                                     if (targetRoute != null) onLoginSuccess(targetRoute) else showError = true
                                 }

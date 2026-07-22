@@ -17,6 +17,8 @@ object AppDestinations {
     const val LOGIN = "login_screen"
     const val WORKFLOW_DASHBOARD = "workflow_dashboard"
     const val DEFECATION_DASHBOARD = "defecation_dashboard"
+
+    const val DEFECATOR_DEDICATED = "defecator_dedicated"
     const val VACUUM_PAN_DEDICATED = "vacuum_pan_dedicated"
 
     const val FLOTATION_CLARIFIER_DEDICATED = "flotation_clarifier_live"
@@ -26,7 +28,7 @@ object AppDestinations {
     const val MILLMANUALENTRY = "mill_manual"
     const val MILL_DASHBOARD = "mill_dashboard"
     const val MILL_DEDICATED = "mill_dedicated"
-    const val DEFECATOR_DEDICATED = "defecator_dedicated"
+
     // ← NEW: Live SSE Mill View
     const val FLOTATION_CLARIFIER = "flotation_clarifier"
     const val VACCUM_PAN = "vaccum_pan"
@@ -234,20 +236,22 @@ fun AppNavigation() {
         composable(AppDestinations.DEFECATION_DASHBOARD) {
             DefecationDiagnosticsHubScreen(
                 onNavigateToScreen = { targetRoute ->
-                    navController.navigate(targetRoute)
+                    navController.navigate(targetRoute) {
+                        // Ensures we don't spam the backstack if user clicks tabs multiple times
+                        launchSingleTop = true
+                    }
                 }
             )
         }
 
         // ─── MILL DASHBOARD (Mock/Carousel UI) ───────────────────────────────
         composable(AppDestinations.MILL_DASHBOARD) {
-
-
-
             // 👇 Change this to call the Screen Container instead of the Hub Screen
             MillDiagnosticsScreenContainer(
                 onNavigateToScreen = { targetRoute ->
-                    navController.navigate(targetRoute)
+                    navController.navigate(targetRoute) {
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -310,9 +314,7 @@ fun AppNavigation() {
         composable(AppDestinations.MAINTENANCE_TAB) {
             MaintenanceTabScreen(
                 onNavigateToScreen = { route ->
-                    // Assuming your NavController is named 'navController'
                     navController.navigate(route) {
-                        // Optional: Standard tab navigation behavior to avoid stacking backstack
                         popUpTo(navController.graph.startDestinationId) {
                             saveState = true
                         }
@@ -350,6 +352,7 @@ fun AppNavigation() {
                 onNavigationCallback = { navController.navigate(AppDestinations.WORKFLOW_DASHBOARD) }
             )
         }
+
         // ─── DEFECATOR DEDICATED (Live SSE UI) ──────────────────────────────
         composable(AppDestinations.DEFECATOR_DEDICATED) {
             DefecatorDedicatedPageScreen(
@@ -372,7 +375,14 @@ fun AppNavigation() {
             )
         }
         composable(AppDestinations.FLOTATION_CLARIFIER_DEDICATED) {
-            FlotationClarifierDedicatedPageScreen()
+            FlotationClarifierDedicatedPageScreen(
+                userName = "Operator",
+                userRole = "Shift Engineer",
+                onBack = { navController.popBackStack() },
+                onNavigateToScreen = { targetRoute ->
+                    navController.navigate(targetRoute) { launchSingleTop = true }
+                }
+            )
         }
         composable(AppDestinations.CONCENTRATION_DEDICATED) {
             ConcentrationDedicatedPageScreen(
@@ -392,13 +402,13 @@ fun AppNavigation() {
             )
         }
 
-
         composable(AppDestinations.QUALITY_CONTROL) {
             QualityControlScreen(onNavigationCallback = {
                 navController.navigate(AppDestinations.WORKFLOW_DASHBOARD)
             })
         }
 
+        // --- Log Entry Page triggers this route perfectly ---
         composable(AppDestinations.DCS_SCREEN) {
             DcsScreen(onNavigationCallback = {
                 navController.navigate(AppDestinations.WORKFLOW_DASHBOARD)

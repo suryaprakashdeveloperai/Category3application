@@ -103,7 +103,7 @@ class ConcentrationDedicatedViewModel(
 
     companion object {
         private const val TAG = "CONCENTRATION_SSE"
-        private const val SSE_URL = "https://dawn-officers-gas-growth.trycloudflare.com/stream"
+        private const val SSE_URL = "https://seed-satellite-advantage-str.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         private const val OP_TEMP_MIN_OK = 95f

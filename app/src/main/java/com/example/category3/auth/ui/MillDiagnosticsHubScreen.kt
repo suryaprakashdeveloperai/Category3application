@@ -50,7 +50,6 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -93,6 +92,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.category3.R
 import com.example.category3.components.RadialAppBar
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // ============================================================================
@@ -162,25 +162,68 @@ fun MillDiagnosticsHubScreen(state: MillDiagDashboardState, onNavigateToScreen: 
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val mainScrollState = rememberScrollState()
 
-    Row(modifier = Modifier.fillMaxSize().background(MillDiagColors.AppBg)) {
-        Box(modifier = Modifier.width(86.dp).fillMaxHeight().zIndex(50f)) {
-            RadialAppBar(modifier = Modifier.align(Alignment.CenterStart), activeSection = "mill_dashboard", onActionSelected = onNavigateToScreen)
-        }
-        Column(modifier = Modifier.weight(1f).fillMaxHeight().padding(end = 24.dp, bottom = 24.dp).verticalScroll(mainScrollState)) {
-            TopNavigationBar(userName = state.userName, userRole = state.userRole, onAction = {})
+    // Global state for charts & KPIs
+    var selectedMotorIndex by remember { mutableIntStateOf(0) }
+
+    // Root Box to allow perfect overlay of the Left Navigation Bar
+    Box(modifier = Modifier.fillMaxSize().background(MillDiagColors.AppBg)) {
+
+        // Main Content pushed completely to the left, minimal padding so app bar hovers on top
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 16.dp, end = 20.dp, bottom = 20.dp)
+                .verticalScroll(mainScrollState)
+        ) {
+            // Passed down onNavigateToScreen via onAction
+            TopNavigationBar(userName = state.userName, userRole = state.userRole, onAction = onNavigateToScreen)
+
             if (isLandscape) {
                 Row(modifier = Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    MillMotorSection(state = state, modifier = Modifier.weight(1.8f).fillMaxHeight())
-                    OverviewSection(state = state, modifier = Modifier.weight(1f).fillMaxHeight())
+                    MillMotorSection(
+                        state = state,
+                        selectedMotorIndex = selectedMotorIndex,
+                        onMotorSelected = { selectedMotorIndex = it },
+                        modifier = Modifier.weight(1.8f).fillMaxHeight()
+                    )
+                    OverviewSection(
+                        state = state,
+                        selectedMotorIndex = selectedMotorIndex,
+                        modifier = Modifier.weight(1.1f).fillMaxHeight()
+                    )
                 }
             } else {
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-                    MillMotorSection(state = state, modifier = Modifier.fillMaxWidth().height(550.dp))
-                    OverviewSection(state = state, modifier = Modifier.fillMaxWidth().height(450.dp))
+                    MillMotorSection(
+                        state = state,
+                        selectedMotorIndex = selectedMotorIndex,
+                        onMotorSelected = { selectedMotorIndex = it },
+                        modifier = Modifier.fillMaxWidth().height(550.dp)
+                    )
+                    OverviewSection(
+                        state = state,
+                        selectedMotorIndex = selectedMotorIndex,
+                        modifier = Modifier.fillMaxWidth().height(550.dp)
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(20.dp))
-            BottomKpiRow(kpis = state.kpis, isLandscape = isLandscape)
+            BottomKpiRow(kpis = state.kpis, selectedMotorIndex = selectedMotorIndex, isLandscape = isLandscape)
+        }
+
+        // Floating App Bar Overlay - Offset slightly to sit perfectly on the left edge
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .zIndex(50f)
+                .align(Alignment.CenterStart)
+                .offset(x = (-8).dp)
+        ) {
+            RadialAppBar(
+                modifier = Modifier.align(Alignment.CenterStart),
+                activeSection = "mill_dashboard",
+                onActionSelected = onNavigateToScreen
+            )
         }
     }
 }
@@ -188,15 +231,40 @@ fun MillDiagnosticsHubScreen(state: MillDiagDashboardState, onNavigateToScreen: 
 @Composable
 fun TopNavigationBar(userName: String, userRole: String, onAction: (String) -> Unit) {
     var activeTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Overview", "Log Entry", "Alerts", "Reports", "AI Insights")
+    val tabs = listOf("Overview", "Log Entry")
     var profileMenuExpanded by remember { mutableStateOf(false) }
 
-    Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        // Empty Spacer on the left so TopNav Text doesn't sit under the Radial Nav
+        Spacer(Modifier.width(60.dp))
+
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             MillGreyFrostGlassCard(shape = CircleShape) { Box(modifier = Modifier.size(44.dp).padding(8.dp), contentAlignment = Alignment.Center) { Icon(Icons.Rounded.Person, null, tint = MillDiagColors.TextGray) } }
             MillGreyFrostGlassCard(shape = RoundedCornerShape(24.dp)) { Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) { Text("Equipment Vitals", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MillDiagColors.TextDark); Icon(Icons.Filled.ArrowDropDown, null, tint = MillDiagColors.TextDark) } }
         }
-        MillGreyFrostGlassCard(shape = RoundedCornerShape(32.dp)) { Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { tabs.forEachIndexed { index, tab -> TopNavLink(text = tab, isActive = activeTab == index, onClick = { activeTab = index }) } } }
+
+        Spacer(Modifier.weight(1f))
+
+        MillGreyFrostGlassCard(shape = RoundedCornerShape(32.dp)) {
+            Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                tabs.forEachIndexed { index, tab ->
+                    TopNavLink(
+                        text = tab,
+                        isActive = activeTab == index,
+                        onClick = {
+                            if (tab == "Log Entry") {
+                                onAction("mill_manual") // Route triggered by the Log Entry Button
+                            } else {
+                                activeTab = index // Keep the Overview tab state selected
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.width(20.dp))
+
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { profileMenuExpanded = true }) {
@@ -225,13 +293,13 @@ fun TopNavLink(text: String, isActive: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun MillMotorSection(state: MillDiagDashboardState, modifier: Modifier = Modifier) {
-    var selectedMotorIndex by remember { mutableIntStateOf(0) }
+fun MillMotorSection(state: MillDiagDashboardState, selectedMotorIndex: Int, onMotorSelected: (Int) -> Unit, modifier: Modifier = Modifier) {
     val activeMotor = state.motors.getOrNull(selectedMotorIndex)
 
     MillGreyFrostGlassCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Column(modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 0.dp)) {
+            // Indent the title header to avoid the floating App Bar on the left
+            Column(modifier = Modifier.padding(start = 65.dp, end = 24.dp, top = 20.dp, bottom = 0.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Mill Drive System", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark)
                     Spacer(Modifier.width(12.dp))
@@ -248,13 +316,15 @@ fun MillMotorSection(state: MillDiagDashboardState, modifier: Modifier = Modifie
             }
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 Image(painter = painterResource(id = activeMotor?.imageRes ?: R.drawable.motor_image), contentDescription = activeMotor?.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-                activeMotor?.let { FloatingStatusCard(title = "${it.name} Status", value = it.healthValue, statusText = it.statusText, statusColor = it.status.toColor(), modifier = Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 16.dp)) }
+
+                // Moved Start/Left cards inwards so they aren't hidden by the App Bar
+                activeMotor?.let { FloatingStatusCard(title = "${it.name} Status", value = it.healthValue, statusText = it.statusText, statusColor = it.status.toColor(), modifier = Modifier.align(Alignment.TopStart).padding(start = 65.dp, top = 16.dp)) }
                 state.connectedEquipment.getOrNull(1)?.let { eq -> FloatingStatusCard(title = eq.name, value = eq.value, statusText = eq.statusText, statusColor = eq.status.toColor(), isBlueIcon = eq.status == MillDiagEquipStatus.STANDBY, modifier = Modifier.align(Alignment.TopEnd).padding(end = 16.dp, top = 16.dp)) }
-                state.connectedEquipment.getOrNull(0)?.let { eq -> FloatingStatusCard(title = eq.name, value = eq.value, statusText = eq.statusText, statusColor = eq.status.toColor(), modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 16.dp)) }
+                state.connectedEquipment.getOrNull(0)?.let { eq -> FloatingStatusCard(title = eq.name, value = eq.value, statusText = eq.statusText, statusColor = eq.status.toColor(), modifier = Modifier.align(Alignment.BottomStart).padding(start = 65.dp, bottom = 16.dp)) }
                 state.connectedEquipment.getOrNull(2)?.let { eq -> FloatingStatusCard(title = eq.name, value = eq.value, statusText = eq.statusText, statusColor = eq.status.toColor(), modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 16.dp)) }
             }
             if (state.motors.isNotEmpty()) {
-                BottomImageArcCarousel(motors = state.motors, selectedIndex = selectedMotorIndex, onItemSelected = { selectedMotorIndex = it }, modifier = Modifier.fillMaxWidth().height(130.dp))
+                BottomImageArcCarousel(motors = state.motors, selectedIndex = selectedMotorIndex, onItemSelected = onMotorSelected, modifier = Modifier.fillMaxWidth().height(130.dp))
             }
         }
     }
@@ -332,9 +402,43 @@ fun FloatingStatusCard(title: String, value: String, statusText: String, statusC
 }
 
 @Composable
-fun OverviewSection(state: MillDiagDashboardState, modifier: Modifier = Modifier) {
+fun OverviewSection(state: MillDiagDashboardState, selectedMotorIndex: Int, modifier: Modifier = Modifier) {
+
+    // Dynamic values based on selected motor index
+    val capacityFloat = state.chartData.designCapacity.toString().toFloatOrNull() ?: 1200f
+    val thresholdFloat = state.chartData.overloadThreshold.toString().toFloatOrNull() ?: 1000f
+    val baseLoad = state.chartData.currentLoad.toString().toFloatOrNull() ?: 850f
+
+    val dynamicLoad = (baseLoad + (selectedMotorIndex * 115.5f)).coerceIn(0f, capacityFloat)
+    val formattedLoad = ((dynamicLoad * 10).roundToInt() / 10f).toString()
+
+    val baseEff = state.efficiency.toString().toFloatOrNull() ?: 92f
+    val dynamicEff = (baseEff - (selectedMotorIndex * 1.6f)).coerceIn(0f, 100f)
+    val formattedEff = ((dynamicEff * 10).roundToInt() / 10f).toString()
+
+    val baseOee = state.oee.toString().toFloatOrNull() ?: 88f
+    val dynamicOee = (baseOee - (selectedMotorIndex * 2.2f)).coerceIn(0f, 100f)
+    val formattedOee = ((dynamicOee * 10).roundToInt() / 10f).toString()
+
+    // Animate the actual Arc Gauge Sweep
+    val loadSweepTarget = (dynamicLoad / capacityFloat) * 180f
+    val animatedLoadSweep by animateFloatAsState(
+        targetValue = loadSweepTarget,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessLow),
+        label = "LoadSweep"
+    )
+
+    // Generate historical points perfectly syncing with dynamicEff & dynamicOee
+    val effPoints = remember(dynamicEff, selectedMotorIndex) {
+        List(12) { i -> if (i == 11) dynamicEff else (dynamicEff + sin(i.toFloat() + selectedMotorIndex) * 5f - 2f).coerceIn(60f, 100f) }
+    }
+    val oeePoints = remember(dynamicOee, selectedMotorIndex) {
+        List(12) { i -> if (i == 11) dynamicOee else (dynamicOee + cos(i.toFloat() + selectedMotorIndex) * 6f - 3f).coerceIn(60f, 100f) }
+    }
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        MillGreyFrostGlassCard(modifier = Modifier.weight(1.3f).fillMaxWidth()) {
+        // --- 1. GAUGE CHART CARD ---
+        MillGreyFrostGlassCard(modifier = Modifier.weight(1f).fillMaxWidth()) {
             Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Equipment Load Analytics", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark)
@@ -344,26 +448,46 @@ fun OverviewSection(state: MillDiagDashboardState, modifier: Modifier = Modifier
                 Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     Box(modifier = Modifier.weight(1.4f).fillMaxHeight()) {
                         val textMeasurer = rememberTextMeasurer()
-                        Canvas(modifier = Modifier.fillMaxSize().padding(bottom = 56.dp, top = 20.dp, end = 12.dp)) {
-                            val w = size.width; val h = size.height; val cx = w / 2f; val cy = h; val rOuter = minOf(w / 2f, h) * 0.95f; val rMid = rOuter * 0.7f; val rInner = rOuter * 0.4f
+                        Canvas(modifier = Modifier.fillMaxSize().padding(bottom = 40.dp, top = 20.dp, end = 12.dp)) {
+                            val w = size.width; val h = size.height; val cx = w / 2f; val cy = h - 10.dp.toPx()
+                            val rOuter = minOf(w / 2f, h) * 0.95f; val rMid = rOuter * 0.72f; val rInner = rOuter * 0.45f
+                            val thresholdSweep = (thresholdFloat / capacityFloat) * 180f
+                            val loadColor = if (dynamicLoad >= thresholdFloat) MillDiagColors.StatusRed else MillDiagColors.AccentOrange
+
                             drawArc(MillDiagColors.AccentOrangeLight, 180f, 180f, true, Offset(cx - rOuter, cy - rOuter), Size(rOuter * 2, rOuter * 2))
-                            drawArc(MillDiagColors.StatusRed.copy(0.2f), 180f, 180f, true, Offset(cx - rMid, cy - rMid), Size(rMid * 2, rMid * 2))
-                            drawArc(Color.White, 180f, 180f, true, Offset(cx - rInner, cy - rInner), Size(rInner * 2, rInner * 2))
-                            val dot = 3.dp.toPx()
-                            drawCircle(MillDiagColors.AccentOrangeLight, dot, Offset(cx, cy - rOuter)); drawCircle(MillDiagColors.StatusRed, dot, Offset(cx, cy - rMid)); drawCircle(MillDiagColors.AccentOrange, dot, Offset(cx, cy - rInner))
+                            drawArc(MillDiagColors.StatusRed.copy(0.15f), 180f, thresholdSweep, true, Offset(cx - rMid, cy - rMid), Size(rMid * 2, rMid * 2))
+                            drawArc(loadColor, 180f, animatedLoadSweep, true, Offset(cx - rInner, cy - rInner), Size(rInner * 2, rInner * 2))
+
+                            val dot = 4.dp.toPx()
+                            drawCircle(MillDiagColors.AccentOrangeLight, dot, Offset(cx, cy - rOuter)); drawCircle(MillDiagColors.StatusRed, dot, Offset(cx, cy - rMid)); drawCircle(loadColor, dot, Offset(cx, cy - rInner))
+
                             val lbl = TextStyle(fontSize = 10.sp, color = MillDiagColors.TextDark, fontWeight = FontWeight.Bold); val unit = state.chartData.unit
-                            val v1 = "${state.chartData.designCapacity} $unit"; val v2 = "${state.chartData.overloadThreshold} $unit"; val v3 = "${state.chartData.currentLoad} $unit"
-                            drawText(textMeasurer, v1, style = lbl, topLeft = Offset(cx - textMeasurer.measure(v1, lbl).size.width / 2f, cy - rOuter - 20f))
-                            drawText(textMeasurer, v2, style = lbl.copy(color = MillDiagColors.StatusRed), topLeft = Offset(cx - textMeasurer.measure(v2, lbl).size.width / 2f, cy - rMid - 20f))
-                            drawText(textMeasurer, v3, style = lbl, topLeft = Offset(cx - textMeasurer.measure(v3, lbl).size.width / 2f, cy - rInner - 20f))
-                            val ax = TextStyle(fontSize = 10.sp, color = MillDiagColors.TextGray, fontWeight = FontWeight.Medium)
-                            drawText(textMeasurer, "Min", style = ax, topLeft = Offset(cx - rOuter - 16f, cy + 12.dp.toPx()))
-                            drawText(textMeasurer, "Avg", style = ax, topLeft = Offset(cx - 16f, cy + 12.dp.toPx()))
-                            drawText(textMeasurer, "Max", style = ax, topLeft = Offset(cx + rOuter - 16f, cy + 12.dp.toPx()))
+
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = "${state.chartData.designCapacity} $unit",
+                                topLeft = Offset(cx - textMeasurer.measure("${state.chartData.designCapacity} $unit", lbl).size.width / 2f, cy - rOuter - 20f),
+                                style = lbl
+                            )
+
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = "${state.chartData.overloadThreshold} $unit",
+                                topLeft = Offset(cx - textMeasurer.measure("${state.chartData.overloadThreshold} $unit", lbl).size.width / 2f, cy - rMid - 20f),
+                                style = lbl.copy(color = MillDiagColors.StatusRed)
+                            )
+
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = "$formattedLoad $unit",
+                                topLeft = Offset(cx - textMeasurer.measure("$formattedLoad $unit", lbl).size.width / 2f, cy - rInner - 20f),
+                                style = lbl.copy(color = loadColor)
+                            )
                         }
                     }
                     Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
-                        LegendItem("Actual Load", "${state.chartData.currentLoad} ${state.chartData.unit}", MillDiagColors.AccentOrange)
+                        val activeColor = if (dynamicLoad >= thresholdFloat) MillDiagColors.StatusRed else MillDiagColors.AccentOrange
+                        LegendItem("Actual Load", "$formattedLoad ${state.chartData.unit}", activeColor)
                         Spacer(Modifier.height(14.dp))
                         LegendItem("Threshold Limit", "${state.chartData.overloadThreshold} ${state.chartData.unit}", MillDiagColors.StatusRed)
                         Spacer(Modifier.height(14.dp))
@@ -372,16 +496,83 @@ fun OverviewSection(state: MillDiagDashboardState, modifier: Modifier = Modifier
                 }
             }
         }
-        MillGreyFrostGlassCard(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            Column(modifier = Modifier.padding(20.dp)) {
+
+        // --- 2. PERFORMANCE HISTORY CHART CARD ---
+        MillGreyFrostGlassCard(modifier = Modifier.fillMaxWidth().weight(1.3f)) {
+            Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+                // Header Texts
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Overall Status", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MillDiagColors.TextDark)
+                    Text("Performance History", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MillDiagColors.TextDark)
                     Row(verticalAlignment = Alignment.CenterVertically) { Text(state.sectionStatus.name, fontSize = 13.sp, color = state.sectionStatus.toColor(), fontWeight = FontWeight.Bold); Spacer(Modifier.width(6.dp)); Box(Modifier.size(9.dp).background(state.sectionStatus.toColor(), CircleShape)) }
                 }
-                Spacer(Modifier.height(16.dp)); HorizontalDivider(color = MillDiagColors.BorderGray.copy(0.5f)); Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
                 Row(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.weight(1f)) { Text("Drive Efficiency", fontSize = 12.sp, color = MillDiagColors.TextGray); Text("${state.efficiency}%", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark) }
-                    Column(modifier = Modifier.weight(1f)) { Text("OEE", fontSize = 12.sp, color = MillDiagColors.TextGray); Text("${state.oee}%", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark) }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(8.dp).background(MillDiagColors.StatusGreen, CircleShape)); Spacer(Modifier.width(6.dp)); Text("Drive Efficiency", fontSize = 12.sp, color = MillDiagColors.TextGray) }
+                        Text("$formattedEff%", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark, modifier = Modifier.padding(start = 14.dp))
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(8.dp).background(MillDiagColors.StatusBlue, CircleShape)); Spacer(Modifier.width(6.dp)); Text("OEE", fontSize = 12.sp, color = MillDiagColors.TextGray) }
+                        Text("$formattedOee%", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark, modifier = Modifier.padding(start = 14.dp))
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+
+                // Real Line Chart matches Eff and OEE points
+                val textMeasurer = rememberTextMeasurer()
+                Canvas(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val chartMin = 60f
+                    val chartMax = 100f
+                    val chartRange = chartMax - chartMin
+
+                    // Draw horizontal grid lines & labels
+                    val yLabels = listOf(100, 80, 60)
+                    yLabels.forEach { value ->
+                        val normalizedY = 1f - ((value - chartMin) / chartRange)
+                        val yPos = normalizedY * size.height
+                        drawLine(MillDiagColors.BorderGray.copy(alpha = 0.4f), Offset(25.dp.toPx(), yPos), Offset(size.width, yPos), 1.dp.toPx())
+                        drawText(
+                            textMeasurer = textMeasurer,
+                            text = value.toString(),
+                            topLeft = Offset(0f, yPos - 6.dp.toPx()),
+                            style = TextStyle(fontSize = 10.sp, color = MillDiagColors.TextGray)
+                        )
+                    }
+
+                    // Helper to draw the smooth lines
+                    fun drawMetricLine(points: List<Float>, color: Color, isFill: Boolean = false) {
+                        val path = Path()
+                        val stepX = (size.width - 30.dp.toPx()) / (points.size - 1)
+                        var prevX = 30.dp.toPx()
+                        var prevY = size.height - (((points[0] - chartMin) / chartRange) * size.height)
+
+                        path.moveTo(prevX, prevY)
+                        for (i in 1 until points.size) {
+                            val x = 30.dp.toPx() + (i * stepX)
+                            val y = size.height - (((points[i] - chartMin) / chartRange) * size.height)
+                            val cpX = (prevX + x) / 2f
+                            path.cubicTo(cpX, prevY, cpX, y, x, y)
+                            prevX = x; prevY = y
+                        }
+
+                        if (isFill) {
+                            val fillPath = Path().apply { addPath(path); lineTo(prevX, size.height); lineTo(30.dp.toPx(), size.height); close() }
+                            drawPath(fillPath, Brush.verticalGradient(listOf(color.copy(alpha = 0.25f), Color.Transparent)))
+                        } else {
+                            drawPath(path, color, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+                            // Draw end dot perfectly matching the large text
+                            drawCircle(Color.White, 5.dp.toPx(), Offset(prevX, prevY))
+                            drawCircle(color, 3.dp.toPx(), Offset(prevX, prevY))
+                        }
+                    }
+
+                    // Draw OEE Line (Blue)
+                    drawMetricLine(oeePoints, MillDiagColors.StatusBlue, isFill = true)
+                    drawMetricLine(oeePoints, MillDiagColors.StatusBlue, isFill = false)
+
+                    // Draw Efficiency Line (Green)
+                    drawMetricLine(effPoints, MillDiagColors.StatusGreen, isFill = true)
+                    drawMetricLine(effPoints, MillDiagColors.StatusGreen, isFill = false)
                 }
             }
         }
@@ -397,16 +588,39 @@ fun LegendItem(label: String, value: String, color: Color) {
 }
 
 @Composable
-fun BottomKpiRow(kpis: List<MillDiagKpiData>, isLandscape: Boolean) {
-    Row(modifier = Modifier.fillMaxWidth().let { if (!isLandscape) it.horizontalScroll(rememberScrollState()) else it }, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        kpis.forEach { KpiCard(modifier = if (isLandscape) Modifier.weight(1f) else Modifier.width(220.dp), data = it) }
+fun BottomKpiRow(kpis: List<MillDiagKpiData>, selectedMotorIndex: Int, isLandscape: Boolean) {
+    Row(modifier = Modifier.fillMaxWidth().let { if (!isLandscape) it.horizontalScroll(rememberScrollState()) else it }.padding(start = 65.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        kpis.forEachIndexed { index, kpi ->
+            KpiCard(
+                modifier = if (isLandscape) Modifier.weight(1f) else Modifier.width(220.dp),
+                data = kpi,
+                selectedIndex = selectedMotorIndex * 3 + index
+            )
+        }
     }
 }
 
 @Composable
-fun KpiCard(modifier: Modifier, data: MillDiagKpiData) {
-    val accentColor = data.type.toColor(); val infiniteTransition = rememberInfiniteTransition(label = "live")
+fun KpiCard(modifier: Modifier, data: MillDiagKpiData, selectedIndex: Int) {
+    val accentColor = data.type.toColor()
+    val infiniteTransition = rememberInfiniteTransition(label = "live")
     val pulseAlpha by infiniteTransition.animateFloat(initialValue = 0.2f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "pulse")
+
+    val numVal = data.value.filter { it.isDigit() || it == '.' }.toString().toFloatOrNull()
+    val dynamicValueStr = if (numVal != null && selectedIndex != 0) {
+        val newVal = numVal * (1f + (selectedIndex * 0.04f))
+        val formatted = ((newVal * 10f).roundToInt() / 10f).toString()
+        val suffix = data.value.filterNot { it.isDigit() || it == '.' }
+        formatted + suffix
+    } else data.value
+
+    val dynamicTrendHistory = remember(data.trendHistory, selectedIndex) {
+        if (selectedIndex == 0) data.trendHistory
+        else {
+            val phaseShift = selectedIndex * 1.5f
+            data.trendHistory.mapIndexed { i, v -> (v + sin(i.toFloat() + phaseShift) * (v * 0.2f)).coerceAtLeast(0f) }
+        }
+    }
 
     MillGreyFrostGlassCard(modifier = modifier) {
         Column(modifier = Modifier.fillMaxWidth().padding(top = 18.dp, start = 18.dp, end = 18.dp, bottom = 12.dp)) {
@@ -414,19 +628,20 @@ fun KpiCard(modifier: Modifier, data: MillDiagKpiData) {
                 Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(30.dp).background(accentColor.copy(0.15f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Icon(data.type.toIcon(), null, tint = accentColor, modifier = Modifier.size(16.dp)) }; Spacer(Modifier.width(8.dp)); Text(data.title, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MillDiagColors.TextGray) }
                 Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(6.dp).background(MillDiagColors.StatusRed.copy(pulseAlpha), CircleShape)); Spacer(Modifier.width(3.dp)); Text("LIVE", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MillDiagColors.StatusRed) }
             }
-            Spacer(Modifier.height(12.dp)); Text(data.value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark); Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(12.dp)); Text(dynamicValueStr, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = MillDiagColors.TextDark); Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) { Icon(if (data.isUpwardTrend) Icons.Rounded.ArrowUpward else Icons.Rounded.ArrowDownward, null, tint = if (data.isUpwardTrend) MillDiagColors.StatusRed else MillDiagColors.StatusGreen, modifier = Modifier.size(12.dp)); Text(" ${data.changeString} vs baseline", fontSize = 10.sp, color = MillDiagColors.TextGray) }
             Spacer(Modifier.height(16.dp))
             Canvas(modifier = Modifier.fillMaxWidth().height(36.dp)) {
-                if (data.trendHistory.isNotEmpty()) {
+                if (dynamicTrendHistory.isNotEmpty()) {
                     val linePath = Path(); val fillPath = Path()
-                    val stepX = size.width / (data.trendHistory.size - 1).coerceAtLeast(1)
-                    val maxV = data.trendHistory.maxOrNull() ?: 1f; val minV = data.trendHistory.minOrNull() ?: 0f
-                    val range = (maxV - minV).coerceAtLeast(0.01f) * 1.2f; val yOffset = (range - (maxV - minV)) / 2f
-                    var prevX = 0f; var prevY = size.height - (((data.trendHistory[0] - minV + yOffset) / range) * size.height)
+                    val stepX = size.width / (dynamicTrendHistory.size - 1).coerceAtLeast(1)
+                    val minV = dynamicTrendHistory.minOrNull() ?: 0f; val maxV = dynamicTrendHistory.maxOrNull() ?: 1f
+                    val range = (maxV - minV).coerceAtLeast(0.001f) * 1.2f; val yOffset = (range - (maxV - minV)) / 2f
+                    var prevX = 0f; var prevY = size.height - (((dynamicTrendHistory[0] - minV + yOffset) / range) * size.height)
                     linePath.moveTo(prevX, prevY); fillPath.moveTo(prevX, size.height); fillPath.lineTo(prevX, prevY)
-                    for (i in 1 until data.trendHistory.size) {
-                        val x = i * stepX; val y = size.height - (((data.trendHistory[i] - minV + yOffset) / range) * size.height)
+
+                    for (i in 1 until dynamicTrendHistory.size) {
+                        val x = i * stepX; val y = size.height - (((dynamicTrendHistory[i] - minV + yOffset) / range) * size.height)
                         val controlPointX = (prevX + x) / 2f
                         linePath.cubicTo(controlPointX, prevY, controlPointX, y, x, y); fillPath.cubicTo(controlPointX, prevY, controlPointX, y, x, y)
                         prevX = x; prevY = y

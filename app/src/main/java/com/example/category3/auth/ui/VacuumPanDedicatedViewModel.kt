@@ -78,7 +78,7 @@ class VacuumPanDedicatedViewModel(
     companion object {
         private const val TAG = "VACUUMPAN_SSE"
         private const val SSE_URL =
-            "https://dawn-officers-gas-growth.trycloudflare.com/stream"
+            "https://seed-satellite-advantage-str.trycloudflare.com/stream"
         private const val RECONNECT_DELAY_MS = 5_000L
 
         // Targets / design (tune to your plant)
